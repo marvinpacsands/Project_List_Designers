@@ -1,4 +1,49 @@
 // Code.gs
+function getSessionEmail_() {
+  return String(Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+}
+
+function rolesFrom_(roleStr) {
+  return String(roleStr || '')
+    .split(',')
+    .map(s => s.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+/**
+ * Reads ADMIN role from your users table.
+ * Tries "Designer Emails" first, then "User settings".
+ * Expects headers including: Email, Role (case-insensitive)
+ */
+function isAdminEmail_(email) {
+  email = String(email || '').trim().toLowerCase();
+  if (!email) return false;
+
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID); // <-- uses your existing Config constant
+  const sh =
+    ss.getSheetByName('Designer Emails') ||
+    ss.getSheetByName('User settings');
+
+  if (!sh) return false;
+
+  const values = sh.getDataRange().getValues();
+  if (!values || values.length < 2) return false;
+
+  const headers = values[0].map(h => String(h || '').trim().toLowerCase());
+  const emailCol = headers.indexOf('email');
+  const roleCol = headers.indexOf('role');
+
+  if (emailCol === -1 || roleCol === -1) return false;
+
+  for (let i = 1; i < values.length; i++) {
+    const rowEmail = String(values[i][emailCol] || '').trim().toLowerCase();
+    if (rowEmail === email) {
+      const roles = rolesFrom_(values[i][roleCol]);
+      return roles.includes('ADMIN');
+    }
+  }
+  return false;
+}
 
 /**
  * Include helper for Apps Script HTML templates.
@@ -9,16 +54,25 @@ function include(filename) {
 }
 
 function doGet(e) {
-  const email = getMyEmail_(); // from Config.gs
+  const actorEmail = getSessionEmail_();            // real signed-in user
+  const imp = e && e.parameter ? e.parameter.impersonate : '';
 
-  // Render Index.html as a template so it can use <?!= ... ?> includes.
+  const actorIsAdmin = isAdminEmail_(actorEmail);
+
+  // Only ADMIN can impersonate; everyone else stays as themselves
+  const targetEmail = (actorIsAdmin && imp) ? String(imp).trim().toLowerCase() : actorEmail;
+
   const t = HtmlService.createTemplateFromFile('Index');
 
-  // Mimic your old Node server behavior: inject a "current user" object.
-  // We'll enrich this later (role/name/etc) once we read your Google Sheet.
-  t.currentUserJson = JSON.stringify({ email });
+  // Frontend will use window.currentUser.email (targetEmail)
+  t.currentUserJson = JSON.stringify({
+    email: targetEmail,
+    actorEmail: actorEmail,
+    isImpersonating: targetEmail !== actorEmail,
+    isAdmin: actorIsAdmin
+  });
 
   return t.evaluate()
     .setTitle('Project Dashboard')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
