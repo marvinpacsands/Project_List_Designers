@@ -70,12 +70,12 @@ function normalize_(v) {
 }
 
 function assertDomain_(email) {
-  const e = String(email || "").toLowerCase().trim();
-  if (!e.endsWith("@" + CFG.DOMAIN)) {
-    throw new Error("Access denied: not in domain.");
-  }
-  return e;
+  email = normalizeEmailParam_(email);
+  if (!email) throw new Error('Missing email');
+  if (!email.endsWith('@pacsands.com')) throw new Error('Access denied');
+  return email;
 }
+
 
 function now_() {
   return new Date();

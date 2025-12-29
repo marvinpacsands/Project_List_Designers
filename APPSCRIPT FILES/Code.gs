@@ -1,4 +1,13 @@
 // Code.gs
+function normalizeEmailParam_(v) {
+  let s = String(v || '').trim();
+  if (!s) return '';
+  try {
+    s = decodeURIComponent(s);
+  } catch (e) {}
+  return s.trim().toLowerCase();
+}
+
 function getSessionEmail_() {
   return String(Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
 }
@@ -46,17 +55,17 @@ function include(filename) {
 }
 
 function doGet(e) {
-  const actorEmail = getSessionEmail_();            // real signed-in user
-  const imp = e && e.parameter ? e.parameter.impersonate : '';
+  const actorEmail = normalizeEmailParam_(getSessionEmail_()); // real signed-in user
+  const impRaw = e && e.parameter ? e.parameter.impersonate : '';
+  const impEmail = normalizeEmailParam_(impRaw);
 
   const actorIsAdmin = isAdminEmail_(actorEmail);
 
   // Only ADMIN can impersonate; everyone else stays as themselves
-  const targetEmail = (actorIsAdmin && imp) ? String(imp).trim().toLowerCase() : actorEmail;
+  const targetEmail = (actorIsAdmin && impEmail) ? impEmail : actorEmail;
 
   const t = HtmlService.createTemplateFromFile('Index');
 
-  // Frontend will use window.currentUser.email (targetEmail)
   t.currentUserJson = JSON.stringify({
     email: targetEmail,
     actorEmail: actorEmail,
