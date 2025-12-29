@@ -15,35 +15,27 @@ function rolesFrom_(roleStr) {
  * Tries "Designer Emails" first, then "User settings".
  * Expects headers including: Email, Role (case-insensitive)
  */
+
 function isAdminEmail_(email) {
   email = String(email || '').trim().toLowerCase();
   if (!email) return false;
 
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID); // <-- uses your existing Config constant
-  const sh =
-    ss.getSheetByName('Designer Emails') ||
-    ss.getSheetByName('User settings');
-
-  if (!sh) return false;
-
+  // Your "Designer Emails" tab is Role | Name | Email (no need to rely on headers)
+  const sh = getSheet_(CFG.SHEET_USERS); // uses Config.gs helpers
   const values = sh.getDataRange().getValues();
   if (!values || values.length < 2) return false;
 
-  const headers = values[0].map(h => String(h || '').trim().toLowerCase());
-  const emailCol = headers.indexOf('email');
-  const roleCol = headers.indexOf('role');
-
-  if (emailCol === -1 || roleCol === -1) return false;
-
-  for (let i = 1; i < values.length; i++) {
-    const rowEmail = String(values[i][emailCol] || '').trim().toLowerCase();
-    if (rowEmail === email) {
-      const roles = rolesFrom_(values[i][roleCol]);
+  for (let r = 1; r < values.length; r++) {
+    const role = String(values[r][0] || '');
+    const em = String(values[r][2] || '').trim().toLowerCase();
+    if (em === email) {
+      const roles = rolesFrom_(role);
       return roles.includes('ADMIN');
     }
   }
   return false;
 }
+
 
 /**
  * Include helper for Apps Script HTML templates.
