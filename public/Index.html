@@ -4,6 +4,16 @@
 <head>
   <meta charset="UTF-8">
   <base target="_top">
+  <script>
+  // Injected by Apps Script (server-side template)
+  window.currentUser = window.currentUser || {};
+  window.currentUser.email = <?!= JSON.stringify(userEmail) ?>;
+  window.currentUser.name  = <?!= JSON.stringify(userName) ?>;
+  window.__APP_BASE__      = <?!= JSON.stringify(appBase) ?>;
+</script>
+
+<?!= include('public/css/NotificationsCss'); ?>
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -940,13 +950,18 @@
     }
   </style>
 
-  <link rel="stylesheet" href="css/notifications.css">
 </head>
 
 <body>
   <div id="toast-container"></div>
-  <script src="js/animations.js"></script>
-  <script src="js/notifications.js"></script>
+
+  <?!= include('public/js/AnimationsJs'); ?>
+  <?!= include('public/js/NotificationsJs'); ?>
+  <?!= include('public/js/CoreJs'); ?>
+  <?!= include('public/js/MineJs'); ?>
+  <?!= include('public/js/PmJs'); ?>
+  <?!= include('public/js/OpsJs'); ?>
+
 
   <div class="container">
     <!-- Header -->
