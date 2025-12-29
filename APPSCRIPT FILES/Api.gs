@@ -15,6 +15,191 @@
 /* =========================
    Helpers
 ========================= */
+
+function maybeNotifyAfterUpdate_(actorEmail, mode, payload, beforeRow, afterRow, map) {
+  const actor = getUserByEmail_(actorEmail);
+  const actorName = actor ? String(actor.name || "").trim() : actorEmail;
+
+  const projNum = String(afterRow[map["Project #"]] || "").trim();
+  const projName = String(afterRow[map["Project"]] || "").trim();
+  const projectLabel = projNum ? `Project ${projNum}` : (projName || "Project");
+
+  const pmName = String(afterRow[map["PM"]] || "").trim();
+
+  const designerBySlot = (slot) => String(afterRow[map[`DESIGNER${slot}`]] || "").trim();
+  const prioBySlot = (slot) => String(afterRow[map[`Prioraty - DESIGNER${slot}`]] || "").trim();
+
+  const changed = (colName) => {
+    const idx = map[colName];
+    if (idx == null) return false;
+    const b = String(beforeRow[idx] == null ? "" : beforeRow[idx]).trim();
+    const a = String(afterRow[idx] == null ? "" : afterRow[idx]).trim();
+    return b !== a;
+  };
+
+  const notify = (targetName, title, body) => {
+    targetName = String(targetName || "").trim();
+    if (!targetName) return;
+
+    // Don’t notify yourself
+    const tNorm = normalize_(targetName);
+    if (tNorm && (tNorm === normalize_(actorName) || tNorm === normalize_(actorEmail))) return;
+
+    createNotification_({
+      targetRole: "ANY",
+      targetName,
+      title,
+      body,
+      projectNumber: projNum
+    });
+  };
+
+  const uniqueTargets = (arr) => {
+    const set = new Set();
+    (arr || []).forEach(v => {
+      const s = String(v || "").trim();
+      if (s) set.add(s);
+    });
+    return Array.from(set);
+  };
+
+  // MODE: PM
+  if (mode === "pm") {
+    // PM notes -> notify all assigned designers
+    if (payload.pmNotes !== undefined && changed("PM notes")) {
+      const designers = uniqueTargets([designerBySlot(1), designerBySlot(2), designerBySlot(3)]);
+      designers.forEach(d =>
+        notify(
+          d,
+          `${projectLabel}: PM note`,
+          `${actorName} added/updated a PM note on <b>${projName || projectLabel}</b>.`
+        )
+      );
+    }
+
+    // Assignments / priority updates per slot
+    for (let slot = 1; slot <= 3; slot++) {
+      if (payload[`designer${slot}`] !== undefined && changed(`DESIGNER${slot}`)) {
+        const newD = designerBySlot(slot);
+        if (newD) {
+          notify(
+            newD,
+            `${projectLabel}: Assigned`,
+            `${actorName} assigned you to <b>${projName || projectLabel}</b>.`
+          );
+        }
+      }
+
+      if (payload[`designer${slot}Priority`] !== undefined && changed(`Prioraty - DESIGNER${slot}`)) {
+        const d = designerBySlot(slot);
+        const pr = prioBySlot(slot);
+        if (d) {
+          notify(
+            d,
+            `${projectLabel}: Priority set`,
+            `${actorName} set your priority to <b>${pr || "—"}</b> on <b>${projName || projectLabel}</b>.`
+          );
+        }
+      }
+    }
+    return;
+  }
+
+  // MODE: mine (designer) -> notify PM when designer changes priority/notes
+  if (mode === "mine") {
+    let mySlot = null;
+    for (let slot = 1; slot <= 3; slot++) {
+      if (normalize_(designerBySlot(slot)) === normalize_(actorName)) {
+        mySlot = slot;
+        break;
+      }
+    }
+    if (!mySlot) return;
+
+    const prioChanged = payload.priority !== undefined && changed(`Prioraty - DESIGNER${mySlot}`);
+    const notesChanged = payload.notes !== undefined && changed(`Notes - DESIGNER${mySlot}`);
+
+    if (prioChanged || notesChanged) {
+      notify(
+        pmName,
+        `${projectLabel}: Designer update`,
+        `${actorName} updated priority/notes for <b>${projName || projectLabel}</b>.`
+      );
+    }
+    return;
+  }
+
+  // MODE: ops -> notify PM + designers when ops notes change
+  if (mode === "ops") {
+    if (payload.operationalNotes !== undefined && changed("Operational notes")) {
+      const designers = uniqueTargets([designerBySlot(1), designerBySlot(2), designerBySlot(3)]);
+      notify(
+        pmName,
+        `${projectLabel}: Ops update`,
+        `${actorName} updated operational notes on <b>${projName || projectLabel}</b>.`
+      );
+      designers.forEach(d =>
+        notify(
+          d,
+          `${projectLabel}: Ops update`,
+          `${actorName} updated operational notes on <b>${projName || projectLabel}</b>.`
+        )
+      );
+    }
+  }
+}
+
+
+
+function createNotification_(opts) {
+  const { sh, map } = getNotificationsSheetMap_();
+
+  const id = Utilities.getUuid();
+  const createdAt = Date.now();
+
+  const targetRole = String(opts.targetRole || 'ANY').toUpperCase();
+  const targetName = String(opts.targetName || '').trim(); // IMPORTANT: we’ll store EMAIL here
+  const title = String(opts.title || '').trim();
+  const body = String(opts.body || '').trim();
+  const projectNumber = String(opts.projectNumber || '').trim();
+
+  const row = new Array(Object.keys(map).length).fill('');
+
+  row[map["id"]] = id;
+  row[map["createdAt"]] = createdAt;
+  row[map["readByJson"]] = JSON.stringify([]);
+  row[map["targetRole"]] = targetRole;
+  row[map["targetName"]] = targetName;
+  row[map["title"]] = title;
+  row[map["body"]] = body;
+  row[map["projectNumber"]] = projectNumber;
+
+  sh.appendRow(row);
+
+  return { id, createdAt };
+}
+
+/**
+ * ADMIN-only: lets you inject test notifications to confirm pipeline end-to-end.
+ */
+function apiCreateNotification(params) {
+  const actorEmail = getMyEmail_();
+  if (!isAdminEmail_(actorEmail)) throw new Error('Not authorized');
+
+  const targetEmail = assertDomain_(params && params.targetEmail);
+  const title = String(params && params.title || 'Test Notification');
+  const body = String(params && params.body || 'Hello');
+  const projectNumber = String(params && params.projectNumber || '');
+
+  return createNotification_({
+    targetRole: 'ANY',
+    targetName: targetEmail, // store email for reliable matching
+    title,
+    body,
+    projectNumber
+  });
+}
+
 function apiAdminListUsers() {
   const actorEmail = getSessionEmail_();
   if (!isAdminEmail_(actorEmail)) throw new Error('Not authorized');
@@ -535,6 +720,7 @@ function apiProjects(params) {
  *   payload: { rowIndex, ... }
  * }
  */
+
 function apiUpdate(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -555,6 +741,9 @@ function apiUpdate(body) {
     // Read current row to detect designer slot, and to avoid overwriting unrelated columns.
     const rowRange = sh.getRange(rowIndex, 1, 1, sh.getLastColumn());
     const row = rowRange.getValues()[0];
+
+    // ✅ (A) Capture BEFORE snapshot (this is where A goes)
+    const beforeRow = row.slice();
 
     const team = buildTeamFromRow_(row, map);
 
@@ -587,6 +776,14 @@ function apiUpdate(body) {
       row[map[dateHeader]] = nowDate;
 
       rowRange.setValues([row]);
+
+      // ✅ (B) Call notifier AFTER saving (this is where B goes)
+      try {
+        maybeNotifyAfterUpdate_(email, mode, payload, beforeRow, row, map);
+      } catch (err) {
+        Logger.log("Notification error (mine): " + err);
+      }
+
       return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
     }
 
@@ -631,6 +828,14 @@ function apiUpdate(body) {
       }
 
       rowRange.setValues([row]);
+
+      // ✅ (B) notifier
+      try {
+        maybeNotifyAfterUpdate_(email, mode, payload, beforeRow, row, map);
+      } catch (err) {
+        Logger.log("Notification error (pm): " + err);
+      }
+
       return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
     }
 
@@ -650,6 +855,14 @@ function apiUpdate(body) {
       }
 
       rowRange.setValues([row]);
+
+      // ✅ (B) notifier
+      try {
+        maybeNotifyAfterUpdate_(email, mode, payload, beforeRow, row, map);
+      } catch (err) {
+        Logger.log("Notification error (ops): " + err);
+      }
+
       return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
     }
 
@@ -658,6 +871,8 @@ function apiUpdate(body) {
     lock.releaseLock();
   }
 }
+
+
 
 function apiSaveCustomOrder(body) {
   const lock = LockService.getScriptLock();
