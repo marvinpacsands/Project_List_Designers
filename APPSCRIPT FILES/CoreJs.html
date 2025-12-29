@@ -25,7 +25,7 @@ const inflight = {};
 /* ================= HELPERS ================= */
 function normalize(s) { return String(s || '').toLowerCase().trim(); }
 function rowKey(p, n) { return String(p || '') + '|' + String(n || ''); }
-<script>
+
 /* ================= GAS BRIDGE (NEW) ================= */
 // Promise wrapper for Apps Script server calls
 function gasCall(fnName, arg) {
@@ -73,7 +73,7 @@ function apiUpdateClient(body) {
     body: JSON.stringify(body)
   }).then(r => r.json());
 }
-</script>
+
 
 // Rank for sorting: 1 (Highest) -> 10 (Lowest). 
 // Legacy/Status: Completed, Hold, Abandoned are special.
