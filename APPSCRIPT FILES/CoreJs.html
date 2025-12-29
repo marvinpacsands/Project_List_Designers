@@ -25,6 +25,55 @@ const inflight = {};
 /* ================= HELPERS ================= */
 function normalize(s) { return String(s || '').toLowerCase().trim(); }
 function rowKey(p, n) { return String(p || '') + '|' + String(n || ''); }
+<script>
+/* ================= GAS BRIDGE (NEW) ================= */
+// Promise wrapper for Apps Script server calls
+function gasCall(fnName, arg) {
+  return new Promise((resolve, reject) => {
+    try {
+      if (!(window.google && google.script && google.script.run)) {
+        return reject(new Error('google.script.run not available'));
+      }
+
+      const runner = google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(err => {
+          // Apps Script errors often come through as an object
+          const msg = (err && err.message) ? err.message : String(err || 'Unknown error');
+          reject(new Error(msg));
+        });
+
+      // Call server function dynamically
+      if (arg === undefined) runner[fnName]();
+      else runner[fnName](arg);
+
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+// Client wrappers (keep local fallback behavior if you ever run MY LOCAL FILES)
+function apiBootstrapClient(email) {
+  if (window.google && google.script && google.script.run) {
+    return gasCall('apiBootstrap', email);
+  }
+  // Local fallback (Node/Express)
+  return fetch('/api/bootstrap?email=' + encodeURIComponent(email)).then(r => r.json());
+}
+
+function apiUpdateClient(body) {
+  if (window.google && google.script && google.script.run) {
+    return gasCall('apiUpdate', body);
+  }
+  // Local fallback (Node/Express)
+  return fetch('/api/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(r => r.json());
+}
+</script>
 
 // Rank for sorting: 1 (Highest) -> 10 (Lowest). 
 // Legacy/Status: Completed, Hold, Abandoned are special.
@@ -501,23 +550,21 @@ function saveRow(idx, view) {
     if (dot) { dot.className = 'sync-dot saving'; }
     if (msg) { msg.textContent = 'Saving...'; }
 
-    fetch('/api/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: window.currentUser.email,
-        mode: 'mine',
-        payload: { rowIndex: idx, priority: newPrio, notes: taVal }
-      })
-    }).then(r => r.json()).then(res => {
+    apiUpdateClient({
+      email: window.currentUser.email,
+      mode: 'mine',
+      payload: { rowIndex: idx, priority: newPrio, notes: taVal }
+    }).then(res => {
       if (dot) { dot.className = 'sync-dot saved'; setTimeout(() => dot.className = 'sync-dot', 2000); }
-      if (msg) { msg.textContent = 'Upd ' + res.savedAtDisplay; }
+      if (msg) { msg.textContent = 'Upd ' + (res && res.savedAtDisplay ? res.savedAtDisplay : ''); }
     }).catch(err => {
+      console.error(err);
       if (dot) { dot.className = 'sync-dot'; dot.style.background = 'red'; }
       if (msg) { msg.textContent = 'Error'; }
     });
   }
 }
+
 
 function debounceSave(idx, view) {
   clearTimeout(saveTimers[idx]);
@@ -547,8 +594,7 @@ function init() {
   const emailParam = urlParams.get('email');
   const email = (window.currentUser ? window.currentUser.email : '') || emailParam || '';
 
-  fetch('/api/bootstrap?email=' + encodeURIComponent(email))
-    .then(r => r.json())
+  apiBootstrapClient(email)
     .then(b => {
       BOOT = b;
       PRIORITY_OPTIONS = b.priorityOptions || [];
@@ -592,9 +638,6 @@ function init() {
       const isPureOps = roles.length === 1 && roles[0] === 'OPERATIONAL';
       const isPurePMOps = roles.length === 2 && hasPM && hasOps;
 
-      // If NOT purely PM or Ops, show Mine (e.g. Designer)
-      // But we handled PM case above.
-      // So checks below are primarily for Pure Designers or weird combos.
       if (!availableTabs.includes('mine')) {
         if (!isPurePMOps && !isPureOps) {
           tMine.style.display = 'inline-block';
@@ -622,7 +665,6 @@ function init() {
       const pmSort = document.getElementById('pmSort');
       if (pmSort) pmSort.addEventListener('change', render);
 
-
       if (hasPM || hasOps) {
         ['pmSelect', 'pmSort', 'pmStatusFilter', 'pmDesignerFilter'].forEach(id => {
           const el = document.getElementById(id);
@@ -638,7 +680,6 @@ function init() {
       }
 
       // Default Tab Logic
-      // PMs default to PM view (requested)
       if (availableTabs.includes('pm')) switchTab('pm');
       else if (availableTabs.includes('ops')) switchTab('ops');
       else if (availableTabs.includes('mine')) switchTab('mine');
@@ -647,7 +688,8 @@ function init() {
       if (availableTabs.includes('pm')) { loadPM(b.name); }
 
       setInterval(() => autoRefresh(), 2000);
-    }).catch(err => {
+    })
+    .catch(err => {
       console.error(err);
       // Fallback for testing/offline
       if (!BOOT) {
@@ -670,6 +712,7 @@ function init() {
       }
     });
 }
+
 
 function switchTab(t) {
   ACTIVE_TAB = t;
