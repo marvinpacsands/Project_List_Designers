@@ -61,18 +61,6 @@ function loadOperational() {
     });
 }
 
-    document.getElementById('liveText').textContent = 'Syncing Ops...';
-    fetch('/api/projects?mode=ops&email=' + encodeURIComponent(window.currentUser.email))
-        .then(r => r.json())
-        .then(res => {
-            const next = res.projects || [];
-            if (window.Notif && typeof Notif.onOpsUpdate === 'function') try { Notif.onOpsUpdate(OPS_ROWS, next); } catch (e) { }
-            OPS_ROWS = next;
-            if (res.people) PEOPLE_LIST = res.people;
-            document.getElementById('liveText').textContent = 'Live';
-            if (ACTIVE_TAB === 'ops') render();
-        });
-}
 
 function buildOperationalCard(r) {
     const card = document.createElement('div');

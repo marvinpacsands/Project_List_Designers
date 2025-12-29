@@ -80,47 +80,6 @@ function loadMine() {
     });
 }
 
-  const emailParam = new URLSearchParams(window.location.search).get('email') || window.currentUser.email;
-  document.getElementById('liveText').textContent = 'Loading...';
-
-  fetch('/api/projects?mode=mine&email=' + encodeURIComponent(emailParam))
-    .then(r => r.json())
-    .then(res => {
-      const rows = res.projects || [];
-      GLOBAL_META = res; // Store full response (includes people, unassigned count if added)
-
-      // success handler logic inline
-
-      const next = rows || [];
-      if (window.Notif) {
-        // Check compliance for sticky alerts
-        Notif.checkCompliance(next, 'mine');
-        // Also fetch latest notifs if needed
-        // Notif.fetchNotifications(); 
-      }
-      MINE_ROWS = next;
-
-      hydrateReactiveFilters(MINE_ROWS, [
-        { id: 'mineStatus', key: 'status', type: 'status', defaultLabel: 'All Statuses' },
-        { id: 'minePMFilter', key: 'pmName', type: 'pm', defaultLabel: 'All PMs', transform: (v) => v || 'Unassigned' }
-      ]);
-
-      document.getElementById('liveText').textContent = 'Live';
-      if (ACTIVE_TAB === 'mine') render();
-    }).catch(err => {
-      console.error(err);
-      // Fallback
-      if (!MINE_ROWS || MINE_ROWS.length === 0) {
-        console.warn('Using Fallback Projects');
-        MINE_ROWS = [
-          { rowIndex: 101, projectNumber: '101', projectName: 'Mock Project 1', status: 'Open', my: { priority: '' }, team: [{ slot: 1 }, { slot: 2 }, { slot: 3 }] },
-          { rowIndex: 102, projectNumber: '102', projectName: 'Mock Project 2', status: 'Open', my: { priority: '' }, team: [{ slot: 1 }, { slot: 2 }, { slot: 3 }] },
-          { rowIndex: 103, projectNumber: '103', projectName: 'Mock Project 3', status: 'Open', my: { priority: '' }, team: [{ slot: 1 }, { slot: 2 }, { slot: 3 }] }
-        ];
-        if (ACTIVE_TAB === 'mine') render();
-      }
-    });
-}
 
 // --- Conflict Logic & Batch Update ---
 async function handlePriorityChange(rowIndex, newPrio) {
