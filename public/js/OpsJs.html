@@ -1,4 +1,4 @@
-
+<script>
 function loadOperational() {
     document.getElementById('liveText').textContent = 'Syncing Ops...';
     fetch('/api/projects?mode=ops&email=' + encodeURIComponent(window.currentUser.email))
@@ -293,3 +293,4 @@ function buildOperationalCard(r) {
     return card;
 }
 
+</script>

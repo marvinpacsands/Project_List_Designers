@@ -1,4 +1,4 @@
-
+<script>
 function loadMine() {
   const emailParam = new URLSearchParams(window.location.search).get('email') || window.currentUser.email;
   document.getElementById('liveText').textContent = 'Loading...';
@@ -730,3 +730,4 @@ function smartUpdateCard(rowIndex, newPriority, oldPriority) {
   }
 }
 
+</script>
