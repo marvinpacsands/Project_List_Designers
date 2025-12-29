@@ -8,7 +8,7 @@ let PRIORITY_OPTIONS = [];
 let PHASE_COLORS = {};
 window.GLOBAL_META = window.GLOBAL_META || {}; // Store extra server data globally
 
-// Expose to window  for external access (e.g. notifications.js)
+// Expose to window for external access (e.g. notifications.js)
 // Use getters so they reflect updates to the local let variables
 Object.defineProperty(window, 'MINE_ROWS', { get: () => MINE_ROWS });
 Object.defineProperty(window, 'PM_ROWS', { get: () => PM_ROWS });
