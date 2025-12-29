@@ -25,6 +25,25 @@ const inflight = {};
 /* ================= HELPERS ================= */
 function normalize(s) { return String(s || '').toLowerCase().trim(); }
 function rowKey(p, n) { return String(p || '') + '|' + String(n || ''); }
+// --- Auto refresh guards (NEW) ---
+let __autoRefreshTimer = null;
+let __lastAutoRefreshMs = 0;
+
+function isUiBusyForRefresh_() {
+  const ae = document.activeElement;
+  if (ae && ['INPUT', 'TEXTAREA', 'SELECT'].includes(ae.tagName)) return true;
+
+  // Your custom multiselect uses .select-options dropdown
+  const openDropdown = document.querySelector('.select-options:not(.hidden)');
+  if (openDropdown) return true;
+
+  // If any card is currently saving, don't refresh
+  const savingDot = document.querySelector('.sync-dot.saving');
+  if (savingDot) return true;
+
+  return false;
+}
+
 
 /* ================= GAS BRIDGE (NEW) ================= */
 // Promise wrapper for Apps Script server calls
@@ -687,7 +706,12 @@ function init() {
       if (availableTabs.includes('ops')) loadOperational();
       if (availableTabs.includes('pm')) { loadPM(b.name); }
 
-      setInterval(() => autoRefresh(), 2000);
+      // Ensure only one auto-refresh timer exists
+      if (__autoRefreshTimer) clearInterval(__autoRefreshTimer);
+
+      // 8s feels much less “jittery” while still “live”
+      // (we’ll later make this event-driven with Firebase signals)
+      __autoRefreshTimer = setInterval(autoRefresh, 8000);
     })
     .catch(err => {
       console.error(err);
@@ -734,11 +758,19 @@ function switchTab(t) {
 }
 
 function autoRefresh() {
-  if (getActiveEdit()) return;
+  // If user is interacting, do not rerender the whole dashboard
+  if (isUiBusyForRefresh_()) return;
+
+  // Safety throttle (prevents “split second” refresh if multiple timers exist)
+  const now = Date.now();
+  if (now - __lastAutoRefreshMs < 4000) return;
+  __lastAutoRefreshMs = now;
+
   if (ACTIVE_TAB === 'mine') loadMine();
-  else if (ACTIVE_TAB === 'pm') loadPM(document.getElementById('pmSelect').value);
+  else if (ACTIVE_TAB === 'pm') loadPM();
   else if (ACTIVE_TAB === 'ops') loadOperational();
 }
+
 
 function getActiveEdit() { return document.querySelector('textarea:focus, select:focus'); }
 

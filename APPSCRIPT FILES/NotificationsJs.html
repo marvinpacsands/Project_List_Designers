@@ -672,18 +672,38 @@
 
     // --- EXPORTS ---
 window.Notif = {
-  init: () => {
+  // Accept BOOT (CoreJs calls Notif.init(b))
+  init: (boot) => {
+    // ✅ Guard: prevent duplicate polling + duplicate UI init
+    if (STATE.__inited) return;
+    STATE.__inited = true;
+
+    // Capture boot info if provided
+    if (boot) {
+      STATE.boot = boot;
+      // Make sure currentUser has a name for targeting
+      if (window.currentUser) {
+        if (!window.currentUser.name && boot.name) window.currentUser.name = boot.name;
+        if (!window.currentUser.roles && boot.roles) window.currentUser.roles = boot.roles;
+      }
+    }
+
     createInbox();
     createToastContainer();
     fetchNotifications();
-    setInterval(fetchNotifications, STATE.pollingInterval);
+
+    // ✅ Extra safety: store timer id so it can’t accidentally double-start
+    if (STATE._pollTimer) clearInterval(STATE._pollTimer);
+    STATE._pollTimer = setInterval(fetchNotifications, STATE.pollingInterval);
   },
+
   requestPermission: () => {
     try {
       if (!('Notification' in window)) return;
       if (Notification.permission === 'default') Notification.requestPermission();
     } catch (e) {}
   },
+
   reset: () => { },
   ack: markAsRead,
   acknowledgeToast: acknowledgeToast,
@@ -691,6 +711,7 @@ window.Notif = {
   checkCompliance: checkCompliance,
   checkBadges: updateBadges
 };
+
 
 })();
 </script>
