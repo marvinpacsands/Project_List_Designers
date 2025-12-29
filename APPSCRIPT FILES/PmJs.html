@@ -1,5 +1,123 @@
 <script>
+function ensureLegacyProjectShape_(p) {
+  if (!p) return p;
+
+  // Add legacy flat fields expected by some PM/Ops helpers (designer1/2/3, priority1/2/3, notes1/2/3)
+  if (!('designer1' in p) && Array.isArray(p.team)) {
+    const t = (slot) => (p.team.find(x => Number(x.slot) === Number(slot)) || {});
+    const t1 = t(1), t2 = t(2), t3 = t(3);
+
+    p.designer1 = t1.name || '';
+    p.designer2 = t2.name || '';
+    p.designer3 = t3.name || '';
+
+    p.priority1 = t1.priority || '';
+    p.priority2 = t2.priority || '';
+    p.priority3 = t3.priority || '';
+
+    p.notes1 = t1.notes || '';
+    p.notes2 = t2.notes || '';
+    p.notes3 = t3.notes || '';
+  }
+
+  return p;
+}
+
+function ensureLegacyProjects_(arr) {
+  return (arr || []).map(ensureLegacyProjectShape_);
+}
+
+function apiProjectsRequest_(params) {
+  // Apps Script mode
+  if (window.google && google.script && google.script.run && typeof gasCall === 'function') {
+    return gasCall('apiProjects', params);
+  }
+
+  // Local/Express fallback
+  const q = new URLSearchParams();
+  q.set('mode', params.mode || '');
+  q.set('email', params.email || '');
+  if (params.pmName !== undefined) q.set('pmName', params.pmName);
+  if (params.includeUnassigned !== undefined) q.set('includeUnassigned', params.includeUnassigned);
+  q.set('_t', Date.now());
+  return fetch('/api/projects?' + q.toString()).then(r => r.json());
+}
+
 function loadPM(pm) {
+  const urlParams = new URLSearchParams(window.location.search);
+  const emailParam = urlParams.get('email') || ((window.currentUser && window.currentUser.email) || (typeof BOOT !== 'undefined' ? BOOT.email : '') || '');
+
+  document.getElementById('liveText').textContent = 'Loading...';
+
+  const inc = document.getElementById('includeUnassigned').checked;
+  const pmQuery = pm || '';
+
+  if (pmQuery !== 'Unassigned') {
+    window.STICKY_UNASSIGNED = [];
+  }
+
+  apiProjectsRequest_({
+    mode: 'pm',
+    email: emailParam,
+    pmName: pmQuery,          // local fallback compatibility
+    pmQuery: pmQuery,         // GAS uses this
+    includeUnassigned: inc
+  })
+    .then(res => {
+      window.GLOBAL_META = res;
+      console.log('PM Data Loaded:', res);
+      if (res.designerCounts) console.log('Active Designer Counts:', res.designerCounts);
+
+      const next = ensureLegacyProjects_(res.projects || []);
+
+      if (window.Notif) {
+        Notif.checkCompliance(next, 'pm');
+      }
+      PM_ROWS = next;
+
+      const pmSel = document.getElementById('pmSelect');
+      if (pmSel) {
+        pmSel.innerHTML = '';
+
+        const optMe = document.createElement('option');
+        optMe.value = BOOT.name;
+        optMe.textContent = 'My Projects';
+        pmSel.appendChild(optMe);
+
+        const optAll = document.createElement('option');
+        optAll.value = '__ALL__';
+        optAll.textContent = 'All Projects';
+        pmSel.appendChild(optAll);
+
+        (res.pmList || []).forEach(p => {
+          if (p === '__ALL__' || normalize(p) === normalize(BOOT.name)) return;
+          const o = document.createElement('option'); o.value = p; o.textContent = p || 'Unassigned';
+          pmSel.appendChild(o);
+        });
+
+        if (!Array.from(pmSel.options).some(o => o.value === 'Unassigned')) {
+          const oUn = document.createElement('option');
+          oUn.value = 'Unassigned';
+          oUn.textContent = 'Unassigned';
+          pmSel.appendChild(oUn);
+        }
+
+        if (pm) pmSel.value = pm;
+        else if (res.selectedPM) pmSel.value = res.selectedPM;
+        else pmSel.value = BOOT.name;
+      }
+
+      if (res.people) PEOPLE_LIST = res.people;
+
+      document.getElementById('liveText').textContent = 'Live';
+      if (ACTIVE_TAB === 'pm') render();
+    })
+    .catch(err => {
+      console.error("loadPM Failed", err);
+      document.getElementById('liveText').textContent = 'Error';
+    });
+}
+
   // Impersonation Support: URL email overrides session logic
   const urlParams = new URLSearchParams(window.location.search);
   const emailParam = urlParams.get('email') || ((window.currentUser && window.currentUser.email) || (typeof BOOT !== 'undefined' ? BOOT.email : '') || '');
@@ -446,6 +564,56 @@ function buildPMCard(r) {
 const DESIGNER_CACHE = {};
 
 function showDesignerTooltip(e, email) {
+  const person = PEOPLE_LIST.find(p => p.name === email);
+  const query = person ? person.email : email;
+
+  let tip = document.getElementById('designerTooltip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'designerTooltip';
+    tip.className = 'designer-tooltip';
+    document.body.appendChild(tip);
+  }
+
+  const rect = e.target.getBoundingClientRect();
+  const scrollY = window.scrollY || document.documentElement.scrollTop;
+  const scrollX = window.scrollX || document.documentElement.scrollLeft;
+
+  tip.style.display = 'block';
+
+  let left = rect.left + scrollX;
+  const tipWidth = 300;
+  if (left + tipWidth > window.innerWidth + scrollX - 20) {
+    left = (window.innerWidth + scrollX - tipWidth - 20);
+  }
+
+  tip.style.top = (rect.bottom + scrollY + 5) + 'px';
+  tip.style.left = left + 'px';
+  tip.innerHTML = '<div class="spinner"></div> Loading...';
+
+  if (DESIGNER_CACHE[query]) {
+    renderTooltipContent(tip, DESIGNER_CACHE[query]);
+  } else {
+    apiProjectsRequest_({ mode: 'mine', email: query })
+      .then(res => {
+        const list = (res.projects || [])
+          .map(p => ({
+            priority: p.my?.priority || '',
+            num: p.projectNumber,
+            name: p.projectName
+          }))
+          .filter(x => x.priority && !isNaN(parseInt(x.priority, 10)));
+
+        list.sort((a, b) => parseInt(a.priority, 10) - parseInt(b.priority, 10));
+        DESIGNER_CACHE[query] = list;
+        renderTooltipContent(tip, list);
+      })
+      .catch(() => {
+        tip.innerHTML = 'Error loading priorities.';
+      });
+  }
+}
+
   // Try to find email from name if passed as name
   // Actually curName is often a Name. API needs Email?
   // API uses robust check (Name OR Email). So Name works! 
@@ -531,6 +699,86 @@ function renderTooltipContent(el, list) {
 }
 
 async function savePM(idx, card) {
+  let row = PM_ROWS.find(r => r.rowIndex === idx);
+  if (!row && window.STICKY_UNASSIGNED) {
+    row = window.STICKY_UNASSIGNED.find(r => r.rowIndex === idx);
+  }
+
+  if (row) {
+    const proceed = await confirmPMOverride(BOOT.name, row.pmName);
+    if (!proceed) return;
+  }
+
+  const pmAssigned = card.querySelector('.form-grid select').value;
+  const pmNote = card.querySelector('textarea').value;
+
+  const dSels = card.querySelectorAll('.des-name-sel');
+  const pSels = card.querySelectorAll('.des-prio-sel');
+
+  const d1 = dSels[0].value, d2 = dSels[1].value, d3 = dSels[2].value;
+  const p1 = pSels[0].value, p2 = pSels[1].value, p3 = pSels[2].value;
+
+  const msg = document.getElementById(`pmmsg-${idx}`);
+  if (msg) msg.textContent = 'Saving...';
+
+  const pRow = PM_ROWS.find(r => r.rowIndex === idx);
+  const sRow = (window.STICKY_UNASSIGNED || []).find(r => r.rowIndex === idx);
+  const targets = [pRow, sRow].filter(x => x);
+  const uniqueTargets = [...new Set(targets)];
+
+  uniqueTargets.forEach(target => {
+    if (target.pm) target.pm.notes = pmNote;
+    target.pmName = pmAssigned;
+
+    target.team = [1, 2, 3].map(slot => {
+      const existing = (target.team || []).find(t => t.slot === slot) || {};
+      const dVal = slot === 1 ? d1 : slot === 2 ? d2 : d3;
+      const pVal = slot === 1 ? p1 : slot === 2 ? p2 : p3;
+      return { slot, name: dVal, priority: pVal, notes: existing.notes || '', dateDisplay: existing.dateDisplay || '' };
+    });
+
+    ensureLegacyProjectShape_(target);
+  });
+
+  const pmSel = document.getElementById('pmSelect');
+  if (pmSel && pmSel.value === 'Unassigned') {
+    if (!window.STICKY_UNASSIGNED) window.STICKY_UNASSIGNED = [];
+    if (!window.STICKY_UNASSIGNED.some(s => s.rowIndex === idx)) {
+      if (row) window.STICKY_UNASSIGNED.push(row);
+    }
+  }
+
+  const body = {
+    email: window.currentUser.email,
+    mode: 'pm',
+    payload: {
+      rowIndex: idx,
+      pmPriority: '',
+      pmNotes: pmNote,
+      pmName: pmAssigned,
+      designer1: d1, designer2: d2, designer3: d3,
+      designer1Priority: p1,
+      designer2Priority: p2,
+      designer3Priority: p3
+    }
+  };
+
+  const call = (typeof apiUpdateClient === 'function')
+    ? apiUpdateClient(body)
+    : fetch('/api/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }).then(r => r.json());
+
+  call.then(res => {
+    if (msg) msg.textContent = 'Upd ' + (res && res.savedAtDisplay ? res.savedAtDisplay : '');
+  }).catch(e => {
+    console.error(e);
+    if (msg) msg.textContent = 'Error';
+  });
+}
+
   // Find row in either list to check permissions/existence
   let row = PM_ROWS.find(r => r.rowIndex === idx);
   if (!row && window.STICKY_UNASSIGNED) {
@@ -622,6 +870,30 @@ function saveCustomOrder(orderedRowIndexes) {
   const pmSelect = document.getElementById('pmSelect');
   const pmName = pmSelect ? pmSelect.value : BOOT.name;
 
+  if (window.GLOBAL_META) {
+    window.GLOBAL_META.customSortOrder = orderedRowIndexes;
+  }
+
+  const body = { email: emailParam, pmName, orderedRowIndexes };
+
+  const call = (window.google && google.script && google.script.run && typeof gasCall === 'function')
+    ? gasCall('apiSaveCustomOrder', body)
+    : fetch('/api/custom-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }).then(r => r.json());
+
+  call.then(res => console.log('Custom order saved:', res))
+      .catch(e => console.error('Failed to save custom order:', e));
+}
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const emailParam = urlParams.get('email') || ((window.currentUser && window.currentUser.email) || (typeof BOOT !== 'undefined' ? BOOT.email : '') || '');
+
+  const pmSelect = document.getElementById('pmSelect');
+  const pmName = pmSelect ? pmSelect.value : BOOT.name;
+
   // Update GLOBAL_META immediately (before fetch) so render() sees new order
   if (window.GLOBAL_META) {
     window.GLOBAL_META.customSortOrder = orderedRowIndexes;
@@ -646,6 +918,82 @@ function saveCustomOrder(orderedRowIndexes) {
 window.saveCustomOrder = saveCustomOrder;
 
 async function executeRemoteShift(pmRowIndex, desSlot, desName, newPrio) {
+  const person = PEOPLE_LIST.find(p => p.name === desName);
+  const query = person ? person.email : desName;
+
+  document.getElementById('liveText').textContent = 'Shifting...';
+
+  try {
+    const data = await apiProjectsRequest_({ mode: 'mine', email: query });
+    let projects = ensureLegacyProjects_(data.projects || []);
+
+    const targetProj = projects.find(p => String(p.rowIndex) === String(pmRowIndex));
+    if (!targetProj) {
+      console.error('Target project not found in designer list', pmRowIndex);
+      return;
+    }
+
+    const updates = [];
+    const targetPrioInt = parseInt(newPrio, 10);
+
+    updates.push({
+      rowIndex: targetProj.rowIndex,
+      priority: String(newPrio),
+      notes: targetProj.my?.notes || ''
+    });
+
+    let others = projects.filter(p => String(p.rowIndex) !== String(pmRowIndex));
+    let bumpVal = targetPrioInt;
+
+    while (true) {
+      const conflict = others.find(p => parseInt(p.my?.priority, 10) === bumpVal);
+      if (!conflict) break;
+
+      const nextVal = bumpVal + 1;
+      let newStr = String(nextVal);
+      if (nextVal > 10) newStr = '';
+
+      updates.push({
+        rowIndex: conflict.rowIndex,
+        priority: newStr,
+        notes: conflict.my?.notes || ''
+      });
+
+      if (newStr === '') break;
+      bumpVal = nextVal;
+    }
+
+    for (const u of updates) {
+      const body = {
+        email: query,
+        mode: 'mine',
+        payload: {
+          rowIndex: u.rowIndex,
+          priority: u.priority,
+          notes: u.notes,
+          realActorEmail: window.currentUser ? window.currentUser.email : null,
+          skipNotifications: String(u.rowIndex) !== String(pmRowIndex)
+        }
+      };
+
+      if (typeof apiUpdateClient === 'function') {
+        await apiUpdateClient(body);
+      } else {
+        await fetch('/api/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+      }
+    }
+
+    loadPM();
+  } catch (e) {
+    console.error('Remote Shift Failed', e);
+    document.getElementById('liveText').textContent = 'Error';
+  }
+}
+
   // 1. Get Designer's email/identifier
   const person = PEOPLE_LIST.find(p => p.name === desName);
   const query = person ? person.email : desName;

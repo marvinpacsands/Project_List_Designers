@@ -1,5 +1,85 @@
 <script>
+function ensureLegacyProjectShape_(p) {
+  if (!p) return p;
+
+  // Add legacy flat fields expected by some PM/Ops helpers (designer1/2/3, priority1/2/3, notes1/2/3)
+  if (!('designer1' in p) && Array.isArray(p.team)) {
+    const t = (slot) => (p.team.find(x => Number(x.slot) === Number(slot)) || {});
+    const t1 = t(1), t2 = t(2), t3 = t(3);
+
+    p.designer1 = t1.name || '';
+    p.designer2 = t2.name || '';
+    p.designer3 = t3.name || '';
+
+    p.priority1 = t1.priority || '';
+    p.priority2 = t2.priority || '';
+    p.priority3 = t3.priority || '';
+
+    p.notes1 = t1.notes || '';
+    p.notes2 = t2.notes || '';
+    p.notes3 = t3.notes || '';
+  }
+
+  return p;
+}
+
+function ensureLegacyProjects_(arr) {
+  return (arr || []).map(ensureLegacyProjectShape_);
+}
+
+function apiProjectsRequest_(params) {
+  // Apps Script mode
+  if (window.google && google.script && google.script.run && typeof gasCall === 'function') {
+    return gasCall('apiProjects', params);
+  }
+
+  // Local/Express fallback
+  const q = new URLSearchParams();
+  q.set('mode', params.mode || '');
+  q.set('email', params.email || '');
+  if (params.pmName !== undefined) q.set('pmName', params.pmName);
+  if (params.includeUnassigned !== undefined) q.set('includeUnassigned', params.includeUnassigned);
+  q.set('_t', Date.now());
+  return fetch('/api/projects?' + q.toString()).then(r => r.json());
+}
+
 function loadMine() {
+  const emailParam = new URLSearchParams(window.location.search).get('email') || window.currentUser.email;
+  document.getElementById('liveText').textContent = 'Loading...';
+
+  apiProjectsRequest_({ mode: 'mine', email: emailParam })
+    .then(res => {
+      const rows = ensureLegacyProjects_(res.projects || []);
+      GLOBAL_META = res; // Store full response
+
+      const next = rows || [];
+      if (window.Notif) {
+        Notif.checkCompliance(next, 'mine');
+      }
+      MINE_ROWS = next;
+
+      hydrateReactiveFilters(MINE_ROWS, [
+        { id: 'mineStatus', key: 'status', type: 'status', defaultLabel: 'All Statuses' },
+        { id: 'minePMFilter', key: 'pmName', type: 'pm', defaultLabel: 'All PMs', transform: (v) => v || 'Unassigned' }
+      ]);
+
+      document.getElementById('liveText').textContent = 'Live';
+      if (ACTIVE_TAB === 'mine') render();
+    })
+    .catch(err => {
+      console.error(err);
+      if (!MINE_ROWS || MINE_ROWS.length === 0) {
+        console.warn('Using Fallback Projects');
+        MINE_ROWS = [
+          { rowIndex: 101, projectNumber: '101', projectName: 'Mock Project 1', status: 'Open', my: { priority: '' }, team: [{ slot: 1 }, { slot: 2 }, { slot: 3 }] },
+          { rowIndex: 102, projectNumber: '102', projectName: 'Mock Project 2', status: 'Open', my: { priority: '' }, team: [{ slot: 1 }, { slot: 2 }, { slot: 3 }] },
+          { rowIndex: 103, projectNumber: '103', projectName: 'Mock Project 3', status: 'Open', my: { priority: '' }, team: [{ slot: 1 }, { slot: 2 }, { slot: 3 }] }
+        ];
+        if (ACTIVE_TAB === 'mine') render();
+      }
+    });
+}
+
   const emailParam = new URLSearchParams(window.location.search).get('email') || window.currentUser.email;
   document.getElementById('liveText').textContent = 'Loading...';
 

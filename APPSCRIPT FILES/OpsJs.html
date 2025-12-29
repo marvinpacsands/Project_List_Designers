@@ -1,5 +1,66 @@
 <script>
+function ensureLegacyProjectShape_(p) {
+  if (!p) return p;
+
+  // Add legacy flat fields expected by some PM/Ops helpers (designer1/2/3, priority1/2/3, notes1/2/3)
+  if (!('designer1' in p) && Array.isArray(p.team)) {
+    const t = (slot) => (p.team.find(x => Number(x.slot) === Number(slot)) || {});
+    const t1 = t(1), t2 = t(2), t3 = t(3);
+
+    p.designer1 = t1.name || '';
+    p.designer2 = t2.name || '';
+    p.designer3 = t3.name || '';
+
+    p.priority1 = t1.priority || '';
+    p.priority2 = t2.priority || '';
+    p.priority3 = t3.priority || '';
+
+    p.notes1 = t1.notes || '';
+    p.notes2 = t2.notes || '';
+    p.notes3 = t3.notes || '';
+  }
+
+  return p;
+}
+
+function ensureLegacyProjects_(arr) {
+  return (arr || []).map(ensureLegacyProjectShape_);
+}
+
+function apiProjectsRequest_(params) {
+  // Apps Script mode
+  if (window.google && google.script && google.script.run && typeof gasCall === 'function') {
+    return gasCall('apiProjects', params);
+  }
+
+  // Local/Express fallback
+  const q = new URLSearchParams();
+  q.set('mode', params.mode || '');
+  q.set('email', params.email || '');
+  if (params.pmName !== undefined) q.set('pmName', params.pmName);
+  if (params.includeUnassigned !== undefined) q.set('includeUnassigned', params.includeUnassigned);
+  q.set('_t', Date.now());
+  return fetch('/api/projects?' + q.toString()).then(r => r.json());
+}
+
 function loadOperational() {
+  document.getElementById('liveText').textContent = 'Syncing Ops...';
+
+  apiProjectsRequest_({ mode: 'ops', email: window.currentUser.email })
+    .then(res => {
+      const next = ensureLegacyProjects_(res.projects || []);
+      if (window.Notif && typeof Notif.onOpsUpdate === 'function') try { Notif.onOpsUpdate(OPS_ROWS, next); } catch (e) { }
+      OPS_ROWS = next;
+      if (res.people) PEOPLE_LIST = res.people;
+      document.getElementById('liveText').textContent = 'Live';
+      if (ACTIVE_TAB === 'ops') render();
+    })
+    .catch(err => {
+      console.error(err);
+      document.getElementById('liveText').textContent = 'Error';
+    });
+}
+
     document.getElementById('liveText').textContent = 'Syncing Ops...';
     fetch('/api/projects?mode=ops&email=' + encodeURIComponent(window.currentUser.email))
         .then(r => r.json())
@@ -245,7 +306,6 @@ function buildOperationalCard(r) {
         const dot = document.getElementById(`dot-${r.rowIndex}`);
         if (dot) dot.className = 'sync-dot saving';
 
-        // Data Gathering
         const pmVal = pmOverride !== undefined ? pmOverride : (trigger ? trigger.dataset.value : '');
 
         const dSels = tList.querySelectorAll('select');
@@ -254,34 +314,44 @@ function buildOperationalCard(r) {
         const d3 = dSels[2].value;
         const opsNoteVal = ta.value;
 
-        fetch('/api/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                email: window.currentUser.email,
-                mode: 'ops',
-                payload: {
-                    rowIndex: r.rowIndex,
-                    pmName: pmVal,
-                    designer1: d1, designer2: d2, designer3: d3,
-                    operationalNotes: opsNoteVal
-                }
-            })
-        }).then(r => r.json()).then(res => {
-            if (msg) msg.textContent = 'Saved ' + res.savedAtDisplay;
+        const body = {
+            email: window.currentUser.email,
+            mode: 'ops',
+            payload: {
+                rowIndex: r.rowIndex,
+                pmName: pmVal,
+                designer1: d1, designer2: d2, designer3: d3,
+                operationalNotes: opsNoteVal
+            }
+        };
+
+        const call = (typeof apiUpdateClient === 'function')
+            ? apiUpdateClient(body)
+            : fetch('/api/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(r => r.json());
+
+        call.then(res => {
+            if (msg) msg.textContent = 'Saved ' + (res && res.savedAtDisplay ? res.savedAtDisplay : '');
             if (dot) {
                 dot.className = 'sync-dot saved';
                 setTimeout(() => dot.className = 'sync-dot', 2000);
             }
+        }).catch(err => {
+            console.error(err);
+            if (msg) msg.textContent = 'Error';
+            if (dot) dot.className = 'sync-dot';
         });
 
-        // Optimistic UI Update for Animation
         if (typeof enhancedSmartUpdateCard === 'function') {
             try {
                 enhancedSmartUpdateCard(r.rowIndex, r.pm?.priority, r.pm?.priority, 'ops');
             } catch (e) { }
         }
     };
+
 
     // Close dropdowns on click outside (Global listener ensures this, but local listener helps too)
     document.addEventListener('click', (e) => {
