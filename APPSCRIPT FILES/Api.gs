@@ -15,6 +15,55 @@
 /* =========================
    Helpers
 ========================= */
+function apiAdminListUsers() {
+  const actorEmail = getSessionEmail_();
+  if (!isAdminEmail_(actorEmail)) throw new Error('Not authorized');
+
+  const sh = getSheet_(CFG.SHEET_USERS); // "Designer Emails"
+  const values = sh.getDataRange().getValues();
+  if (!values || values.length === 0) return [];
+
+  // Detect header vs no-header
+  // Expected either:
+  //  - Header row: Role | Name | Email
+  //  - or raw data rows: role,name,email
+  let startRow = 1;
+
+  const firstRow = values[0].map(v => String(v || '').trim());
+  const looksLikeHeader =
+    firstRow.some(x => x.toLowerCase() === 'email') ||
+    firstRow.some(x => x.toLowerCase() === 'role') ||
+    firstRow.some(x => x.toLowerCase() === 'name');
+
+  if (!looksLikeHeader) startRow = 0;
+
+  // If header exists, map indices; otherwise default Role/Name/Email order
+  let iRole = 0, iName = 1, iEmail = 2;
+  if (looksLikeHeader) {
+    const hdr = firstRow.map(x => x.toLowerCase());
+    iRole = Math.max(0, hdr.indexOf('role'));
+    iName = Math.max(1, hdr.indexOf('name'));
+    iEmail = Math.max(2, hdr.indexOf('email'));
+  }
+
+  const out = [];
+  for (let r = startRow; r < values.length; r++) {
+    const role = String(values[r][iRole] || '').trim();
+    const name = String(values[r][iName] || '').trim();
+    const email = String(values[r][iEmail] || '').trim().toLowerCase();
+    if (!email) continue;
+    if (!email.endsWith('@pacsands.com')) continue;
+
+    out.push({
+      role,
+      name: name || email,
+      email
+    });
+  }
+
+  out.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return out;
+}
 
 function normalize_(v) {
   return String(v == null ? "" : v).trim().toLowerCase();

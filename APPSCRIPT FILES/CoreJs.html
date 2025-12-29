@@ -616,6 +616,7 @@ function init() {
   apiBootstrapClient(email)
     .then(b => {
       BOOT = b;
+      initAdminViewAs_();
       PRIORITY_OPTIONS = b.priorityOptions || [];
       PHASE_COLORS = b.phaseColors || {};
       if (window.Notif) {
@@ -1326,6 +1327,102 @@ function render() {
     rows.forEach(r => grid.appendChild(buildOperationalCard(r)));
     // Ops stats?
   }
+}
+function buildAdminViewAsBar_() {
+  if (document.getElementById('admin-viewas-bar')) return;
+
+  const bar = document.createElement('div');
+  bar.id = 'admin-viewas-bar';
+  bar.style.cssText = `
+    display:flex;
+    gap:10px;
+    align-items:center;
+    padding:8px 12px;
+    margin:10px 0;
+    border:1px solid #e2e8f0;
+    background:#f8fafc;
+    border-radius:8px;
+    font-family: Inter, sans-serif;
+    font-size:12px;
+  `;
+
+  bar.innerHTML = `
+    <div style="font-weight:700; color:#0f172a;">ADMIN</div>
+    <div style="color:#475569;">View as:</div>
+    <select id="adminViewAsSelect" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; min-width:240px;"></select>
+    <button id="adminViewAsReset" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; background:white; cursor:pointer; font-weight:600;">
+      Reset (Me)
+    </button>
+    <div id="adminViewAsHint" style="margin-left:auto; color:#64748b;"></div>
+  `;
+
+  // Insert above tabs if possible; otherwise top of body
+  const tabs = document.getElementById('tabs');
+  if (tabs && tabs.parentNode) tabs.parentNode.insertBefore(bar, tabs);
+  else document.body.insertBefore(bar, document.body.firstChild);
+}
+
+function initAdminViewAs_() {
+  const cu = window.currentUser || {};
+  if (!cu.isAdmin) return;
+
+  buildAdminViewAsBar_();
+
+  const actor = (cu.actorEmail || cu.email || '').toLowerCase();
+  const target = (cu.email || '').toLowerCase();
+
+  const sel = document.getElementById('adminViewAsSelect');
+  const btn = document.getElementById('adminViewAsReset');
+  const hint = document.getElementById('adminViewAsHint');
+
+  if (hint) {
+    hint.textContent = (target !== actor)
+      ? `Viewing as ${target} (you: ${actor})`
+      : `You: ${actor}`;
+  }
+
+  // Populate dropdown from server
+  gasCall('apiAdminListUsers')
+    .then(users => {
+      sel.innerHTML = '';
+
+      // Add "Me" option first
+      const meOpt = document.createElement('option');
+      meOpt.value = actor;
+      meOpt.textContent = `Me (${actor})`;
+      sel.appendChild(meOpt);
+
+      // Add everyone else
+      (users || []).forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = String(u.email || '').toLowerCase();
+        opt.textContent = `${u.name} — ${u.email}${u.role ? ` (${u.role})` : ''}`;
+        sel.appendChild(opt);
+      });
+
+      sel.value = target || actor;
+    })
+    .catch(err => {
+      console.error('apiAdminListUsers failed:', err);
+      sel.innerHTML = `<option value="${actor}">Me (${actor})</option>`;
+      sel.value = target || actor;
+    });
+
+  sel.onchange = () => {
+    const picked = String(sel.value || '').toLowerCase();
+    const u = new URL(window.location.href);
+
+    if (picked && picked !== actor) u.searchParams.set('impersonate', picked);
+    else u.searchParams.delete('impersonate');
+
+    window.location.href = u.toString();
+  };
+
+  btn.onclick = () => {
+    const u = new URL(window.location.href);
+    u.searchParams.delete('impersonate');
+    window.location.href = u.toString();
+  };
 }
 
 document.addEventListener('DOMContentLoaded', init);
