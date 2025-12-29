@@ -758,18 +758,31 @@ function switchTab(t) {
 }
 
 function autoRefresh() {
-  // If user is interacting, do not rerender the whole dashboard
   if (isUiBusyForRefresh_()) return;
 
-  // Safety throttle (prevents “split second” refresh if multiple timers exist)
   const now = Date.now();
   if (now - __lastAutoRefreshMs < 4000) return;
   __lastAutoRefreshMs = now;
 
-  if (ACTIVE_TAB === 'mine') loadMine();
-  else if (ACTIVE_TAB === 'pm') loadPM();
-  else if (ACTIVE_TAB === 'ops') loadOperational();
+  if (ACTIVE_TAB === 'mine') {
+    loadMine();
+    return;
+  }
+
+  if (ACTIVE_TAB === 'pm') {
+    // ✅ preserve PM view (My Projects / Unassigned / etc.)
+    const pmSel = document.getElementById('pmSelect');
+    const pmVal = pmSel ? pmSel.value : undefined;
+    loadPM(pmVal);
+    return;
+  }
+
+  if (ACTIVE_TAB === 'ops') {
+    loadOperational();
+    return;
+  }
 }
+
 
 
 function getActiveEdit() { return document.querySelector('textarea:focus, select:focus'); }

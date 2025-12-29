@@ -45,12 +45,18 @@ function apiProjectsRequest_(params) {
 
 function loadPM(pm) {
   const urlParams = new URLSearchParams(window.location.search);
-  const emailParam = urlParams.get('email') || ((window.currentUser && window.currentUser.email) || (typeof BOOT !== 'undefined' ? BOOT.email : '') || '');
+  const emailParam =
+    urlParams.get('email') ||
+    ((window.currentUser && window.currentUser.email) || (typeof BOOT !== 'undefined' ? BOOT.email : '') || '');
 
   document.getElementById('liveText').textContent = 'Loading...';
 
   const inc = document.getElementById('includeUnassigned').checked;
-  const pmQuery = pm || '';
+
+  // ✅ If pm arg is missing, keep whatever is currently selected
+  const pmSelExisting = document.getElementById('pmSelect');
+  const currentSelected = pmSelExisting ? pmSelExisting.value : '';
+  const pmQuery = (pm !== undefined && pm !== null && pm !== '') ? pm : (currentSelected || (BOOT && BOOT.name) || '');
 
   if (pmQuery !== 'Unassigned') {
     window.STICKY_UNASSIGNED = [];
@@ -59,20 +65,15 @@ function loadPM(pm) {
   apiProjectsRequest_({
     mode: 'pm',
     email: emailParam,
-    pmName: pmQuery,          // local fallback compatibility
-    pmQuery: pmQuery,         // GAS uses this
+    pmName: pmQuery,   // local fallback compatibility
+    pmQuery: pmQuery,  // GAS uses this
     includeUnassigned: inc
   })
     .then(res => {
       window.GLOBAL_META = res;
-      console.log('PM Data Loaded:', res);
-      if (res.designerCounts) console.log('Active Designer Counts:', res.designerCounts);
 
       const next = ensureLegacyProjects_(res.projects || []);
-
-      if (window.Notif) {
-        Notif.checkCompliance(next, 'pm');
-      }
+      if (window.Notif) Notif.checkCompliance(next, 'pm');
       PM_ROWS = next;
 
       const pmSel = document.getElementById('pmSelect');
@@ -91,10 +92,13 @@ function loadPM(pm) {
 
         (res.pmList || []).forEach(p => {
           if (p === '__ALL__' || normalize(p) === normalize(BOOT.name)) return;
-          const o = document.createElement('option'); o.value = p; o.textContent = p || 'Unassigned';
+          const o = document.createElement('option');
+          o.value = p;
+          o.textContent = p || 'Unassigned';
           pmSel.appendChild(o);
         });
 
+        // Ensure Unassigned is always available
         if (!Array.from(pmSel.options).some(o => o.value === 'Unassigned')) {
           const oUn = document.createElement('option');
           oUn.value = 'Unassigned';
@@ -102,9 +106,8 @@ function loadPM(pm) {
           pmSel.appendChild(oUn);
         }
 
-        if (pm) pmSel.value = pm;
-        else if (res.selectedPM) pmSel.value = res.selectedPM;
-        else pmSel.value = BOOT.name;
+        // ✅ Preserve view selection after refresh
+        pmSel.value = pmQuery || BOOT.name;
       }
 
       if (res.people) PEOPLE_LIST = res.people;
