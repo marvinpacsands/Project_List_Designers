@@ -1,51 +1,30 @@
-/**
- * Web app entry point.
- * Serves the dashboard UI and injects the signed-in user.
- */
+// Code.gs
 function doGet(e) {
-  const email = getSignedInEmail_(e);
+  // Step 4 goal: confirm web app can render something and detect user email.
+  const email = getMyEmail_();
 
-  if (!email) {
-    return HtmlService
-      .createHtmlOutput('Please sign in with your @pacsands.com Google account.');
-  }
+  const html = HtmlService.createHtmlOutput(`
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <title>Dashboard Bootstrap</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 16px; }
+          .box { padding: 12px; border: 1px solid #ddd; border-radius: 8px; }
+          code { background:#f6f6f6; padding:2px 6px; border-radius:6px; }
+        </style>
+      </head>
+      <body>
+        <h2>Dashboard Web App is Running ✅</h2>
+        <div class="box">
+          <div><b>Detected email:</b> <code>${email || "(blank)"}</code></div>
+          <div style="margin-top:8px;">Next: we’ll load role + projects from the Sheet and then inject your full UI.</div>
+        </div>
+      </body>
+    </html>
+  `);
 
-  if (!isAllowedDomain_(email)) {
-    return HtmlService
-      .createHtmlOutput('Unauthorized. Use your @pacsands.com account.');
-  }
-
-  // Serve the real UI (public/Index.html) as a template
-  const t = HtmlService.createTemplateFromFile('public/Index');
-  t.userEmail = email;
-  t.userName = email.split('@')[0];
-  t.appBase = ScriptApp.getService().getUrl(); // your .../exec URL
-
-  return t.evaluate()
-    .setTitle('Project Dashboard')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-/**
- * HTML templating helper.
- * Usage in HTML: <?!= include('public/js/AnimationsJs'); ?>
- */
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
-
-function getSignedInEmail_(e) {
-  // Works when deployed as: "Execute as: User accessing the web app"
-  const active = Session.getActiveUser().getEmail();
-  if (active) return active;
-
-  const effective = Session.getEffectiveUser().getEmail();
-  if (effective) return effective;
-
-  // Dev fallback only (optional): allow ?email=... for testing
-  return (e && e.parameter && e.parameter.email) ? String(e.parameter.email) : '';
-}
-
-function isAllowedDomain_(email) {
-  return String(email).toLowerCase().endsWith('@pacsands.com');
+  return html
+    .setTitle("Dashboard Bootstrap")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); // useful later if we embed in Google Sites
 }
