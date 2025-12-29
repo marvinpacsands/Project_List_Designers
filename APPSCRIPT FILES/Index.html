@@ -4,16 +4,6 @@
 <head>
   <meta charset="UTF-8">
   <base target="_top">
-  <script>
-  // Injected by Apps Script (server-side template)
-  window.currentUser = window.currentUser || {};
-  window.currentUser.email = <?!= JSON.stringify(userEmail) ?>;
-  window.currentUser.name  = <?!= JSON.stringify(userName) ?>;
-  window.__APP_BASE__      = <?!= JSON.stringify(appBase) ?>;
-</script>
-
-<?!= include('public/css/NotificationsCss'); ?>
-
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -950,17 +940,18 @@
     }
   </style>
 
+  <?!= include('NotificationsCss'); ?>
+  <script>
+  window.currentUser = <?!= currentUserJson ?>;
+  console.log('Logged in as:', window.currentUser);
+</script>
+
 </head>
 
 <body>
   <div id="toast-container"></div>
-
-  <?!= include('public/js/AnimationsJs'); ?>
-  <?!= include('public/js/NotificationsJs'); ?>
-  <?!= include('public/js/CoreJs'); ?>
-  <?!= include('public/js/MineJs'); ?>
-  <?!= include('public/js/PmJs'); ?>
-  <?!= include('public/js/OpsJs'); ?>
+  <?!= include('AnimationsJs'); ?>
+  <?!= include('NotificationsJs'); ?>
 
 
   <div class="container">
@@ -1346,10 +1337,11 @@
   <div id="sticky-alerts"></div>
 
   <script src="/js/notifications.js?v=20"></script>
-  <script src="js/core.js?v=3"></script>
-  <script src="js/mine.js?v=8"></script>
-  <script src="js/pm.js?v=14"></script>
-  <script src="js/ops.js"></script>
+  <?!= include('CoreJs'); ?>
+  <?!= include('MineJs'); ?>
+  <?!= include('PmJs'); ?>
+  <?!= include('OpsJs'); ?>
+
   <script>
     // Initialize after load
     window.addEventListener('DOMContentLoaded', () => {
