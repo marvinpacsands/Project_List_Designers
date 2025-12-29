@@ -671,28 +671,26 @@
     }
 
     // --- EXPORTS ---
-    window.Notif = {
-        init: (boot) => {
-            // Core calls Notif.init(BOOT). We keep compatibility and capture name for notifications.
-            STATE.boot = boot || STATE.boot || null;
+window.Notif = {
+  init: () => {
+    createInbox();
+    createToastContainer();
+    fetchNotifications();
+    setInterval(fetchNotifications, STATE.pollingInterval);
+  },
+  requestPermission: () => {
+    try {
+      if (!('Notification' in window)) return;
+      if (Notification.permission === 'default') Notification.requestPermission();
+    } catch (e) {}
+  },
+  reset: () => { },
+  ack: markAsRead,
+  acknowledgeToast: acknowledgeToast,
+  viewProject: viewProject,
+  checkCompliance: checkCompliance,
+  checkBadges: updateBadges
+};
 
-            if (boot && window.currentUser) {
-                if (!window.currentUser.name && boot.name) window.currentUser.name = boot.name;
-                // roles not needed here, but safe to keep if you later use them
-                if (!window.currentUser.roles && boot.roles) window.currentUser.roles = boot.roles;
-            }
-
-            createInbox();
-            createToastContainer();
-            fetchNotifications();
-            setInterval(fetchNotifications, STATE.pollingInterval);
-        },
-        reset: () => { }, // No-op for compatibility with core.js
-        ack: markAsRead,
-        acknowledgeToast: acknowledgeToast,
-        viewProject: viewProject,
-        checkCompliance: checkCompliance,
-        checkBadges: updateBadges
-    };
 })();
 </script>
