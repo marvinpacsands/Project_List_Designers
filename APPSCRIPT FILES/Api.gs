@@ -1,642 +1,738 @@
+// Api.gs
+//
+// Server-side API for the dashboard (Apps Script).
+// This replaces your old Express endpoints with callable GAS functions.
+// Frontend behavior stays the same; we’re just changing the transport layer.
+//
+// Public functions the frontend will call (via google.script.run wrapper in Step 6):
+//   - apiBootstrap(email)
+//   - apiProjects(params)
+//   - apiUpdate({ email, mode, payload })
+//   - apiSaveCustomOrder({ email, pmName, orderedRowIndexes })
+//   - apiGetNotifications({ email, name })
+//   - apiAckNotification({ id, email })
+
+/* =========================
+   Helpers
+========================= */
+
+function normalize_(v) {
+  return String(v == null ? "" : v).trim().toLowerCase();
+}
+
+function assertDomain_(email) {
+  const e = String(email || "").toLowerCase().trim();
+  if (!e.endsWith("@" + CFG.DOMAIN)) {
+    throw new Error("Access denied: not in domain.");
+  }
+  return e;
+}
+
+function now_() {
+  return new Date();
+}
+
+function fmtTime_(d) {
+  // Matches the feel of `new Date().toLocaleTimeString()`
+  // (Apps Script locale can vary; this is consistent.)
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), "h:mm:ss a");
+}
+
+function fmtDate_(d) {
+  if (!d) return "";
+  if (Object.prototype.toString.call(d) === "[object Date]" && !isNaN(d.getTime())) {
+    return Utilities.formatDate(d, Session.getScriptTimeZone(), "MM/dd/yyyy");
+  }
+  // If already a string in the sheet
+  return String(d);
+}
+
+function safeJsonParse_(s, fallback) {
+  try {
+    if (!s) return fallback;
+    return JSON.parse(String(s));
+  } catch (e) {
+    return fallback;
+  }
+}
+
 /**
- * Api.gs
- * Implements:
- *  GET  /api/bootstrap
- *  GET  /api/projects?mode=mine|pm|ops&email=...&pm=...&includeUnassigned=...
- *  POST /api/update
- *  POST /api/custom-order
- *  GET  /api/notifications
- *  POST /api/notifications/ack
- *
- * Sheet-backed (Google Sheets is source of truth).
+ * Ensures a sheet has certain header columns (row 1).
+ * If any are missing, append them to the end.
+ * Returns a map: headerName -> 0-based index in the row array.
  */
+function ensureColumns_(sheet, requiredHeaders) {
+  const headerRange = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1));
+  let headerVals = headerRange.getValues()[0].map(h => String(h || "").trim());
 
-// ======== CONFIG (edit these if your tab names differ) ========
-const APP_CONFIG = {
-  // Set this in Script Properties as SPREADSHEET_ID (recommended),
-  // OR hardcode here as fallback:
-  SPREADSHEET_ID_FALLBACK: '',
+  // If the sheet is brand new and has 0 columns, headerVals may be [""].
+  // We'll treat empty headers as missing.
+  const existing = new Set(headerVals.filter(Boolean));
 
-  SHEETS: {
-    PROJECTS: 'Project List - Designers', // your main data table
-    PEOPLE: 'Designer Emails',            // role/name/email list
-    COLORS: 'Phase Colors',               // phase -> hex color
-    USER_SETTINGS: 'User Settings',       // email/name/role/customSortOrderJson
-    NOTIFICATIONS: 'Notifications'        // notifications table (optional)
-  },
+  let lastCol = headerVals.length;
+  let mutated = false;
 
-  HEADER_ROW: 1
-};
-
-// ======== Public entrypoints (these should be called by Code.gs router) ========
-function api_doGet(e) {
-  const route = api_route_(e);
-  try {
-    if (route === 'bootstrap') return api_json_(api_bootstrap_(e));
-    if (route === 'projects') return api_json_(api_projects_(e));
-    if (route === 'notifications') return api_json_(api_notifications_(e));
-    return api_json_({ ok: false, error: 'Unknown GET route', route });
-  } catch (err) {
-    return api_json_({ ok: false, error: String(err && err.message ? err.message : err), stack: String(err && err.stack ? err.stack : '') }, 500);
-  }
-}
-
-function api_doPost(e) {
-  const route = api_route_(e);
-  const body = api_parseBody_(e);
-  try {
-    if (route === 'update') return api_json_(api_update_(body));
-    if (route === 'custom-order') return api_json_(api_customOrder_(body));
-    if (route === 'notifications/ack') return api_json_(api_notificationsAck_(body));
-    return api_json_({ ok: false, error: 'Unknown POST route', route });
-  } catch (err) {
-    return api_json_({ ok: false, error: String(err && err.message ? err.message : err), stack: String(err && err.stack ? err && err.stack : '') }, 500);
-  }
-}
-
-// ======== ROUTING ========
-function api_route_(e) {
-  const pathInfo = (e && e.pathInfo) ? String(e.pathInfo) : '';
-  // Expected: /api/bootstrap, /api/projects, /api/update, ...
-  const cleaned = pathInfo.replace(/^\/+/, ''); // remove leading /
-  if (!cleaned) return '';
-  if (cleaned.startsWith('api/')) return cleaned.slice(4); // remove "api/"
-  return cleaned; // if already passed in as just "bootstrap", etc.
-}
-
-// ======== BOOTSTRAP ========
-function api_bootstrap_(e) {
-  const email = api_param_(e, 'email') || api_activeEmail_() || '';
-  const people = api_readPeople_();
-  const phaseColors = api_readPhaseColors_();
-
-  // Resolve name + roles
-  const userSettings = api_readUserSettingsByEmail_(email);
-  const person = people.find(p => api_norm_(p.email) === api_norm_(email));
-  const name = (userSettings && userSettings.name) || (person && person.name) || email;
-  const roleRaw = (userSettings && userSettings.role) || (person && person.role) || '';
-  const roles = api_rolesFromRoleString_(roleRaw);
-
-  // Numeric priorities 1-10 + blank (your UI expects these)
-  const priorityOptions = [''].concat(Array.from({ length: 10 }, (_, i) => String(i + 1)));
-
-  return {
-    ok: true,
-    email,
-    name,
-    roles,
-    priorityOptions,
-    phaseColors,
-    logoUrl: '', // optional (keep blank if not using)
-  };
-}
-
-// ======== PROJECTS ========
-function api_projects_(e) {
-  const mode = (api_param_(e, 'mode') || 'mine').toLowerCase();
-  const email = api_param_(e, 'email') || api_activeEmail_() || '';
-  const pmFilter = api_param_(e, 'pm') || '';
-  const includeUnassigned = String(api_param_(e, 'includeUnassigned') || '').toLowerCase() === 'true';
-
-  const ss = api_ss_();
-  const projectsSheet = api_getSheet_(ss, [APP_CONFIG.SHEETS.PROJECTS, 'Sheet 1']);
-  const people = api_readPeople_();
-  const phaseColors = api_readPhaseColors_();
-  const userSettings = api_readUserSettingsByEmail_(email);
-
-  // Resolve the "display name" for matching designer slots
-  const person = people.find(p => api_norm_(p.email) === api_norm_(email));
-  const requesterName = (userSettings && userSettings.name) || (person && person.name) || email;
-
-  const table = api_readTable_(projectsSheet);
-  const rawProjects = table.rows.map(r => api_projectFromRow_(r));
-
-  // Build pmList for PM dropdown
-  const pmList = api_unique_(rawProjects.map(p => p.pmName || 'Unassigned'))
-    .filter(Boolean)
-    .sort((a, b) => String(a).localeCompare(String(b)));
-
-  // Transform into UI rows (team[], pm{}, etc.)
-  let rows = rawProjects.map(p => api_toUiRow_(p));
-
-  if (mode === 'mine') {
-    // Show projects where the requester is in any designer slot
-    rows = rows
-      .map(r => api_attachMySlot_(r, requesterName))
-      .filter(r => !!r.my && !!r.my.slot);
-
-  } else if (mode === 'pm') {
-    // PM view: filter by pm name unless "__ALL__"
-    if (pmFilter && pmFilter !== '__ALL__') {
-      if (pmFilter === 'Unassigned') {
-        rows = rows.filter(r => !r.pmName || api_norm_(r.pmName) === api_norm_('Unassigned'));
-      } else {
-        rows = rows.filter(r => api_norm_(r.pmName) === api_norm_(pmFilter));
-      }
+  requiredHeaders.forEach(h => {
+    if (!existing.has(h)) {
+      // append
+      lastCol += 1;
+      sheet.getRange(1, lastCol).setValue(h);
+      headerVals.push(h);
+      existing.add(h);
+      mutated = true;
     }
-
-    // includeUnassigned: append unassigned if toggled
-    if (!includeUnassigned) {
-      // If PM picked a specific PM, we usually hide unassigned unless toggled
-      if (pmFilter && pmFilter !== '__ALL__' && pmFilter !== 'Unassigned') {
-        rows = rows.filter(r => api_norm_(r.pmName) !== api_norm_('Unassigned'));
-      }
-    }
-
-  } else if (mode === 'ops') {
-    // Ops view: typically show operational = true (and/or whatever you want)
-    // Keep everything if operational column is blank in your sheet
-    rows = rows.filter(r => r.operational === true || r.operational === 'TRUE' || r.operational === 'true' || r.operational === 1 || r.operational === '1' || r.operational === '' || r.operational == null);
-  }
-
-  // Custom sort order (PM only)
-  let customSortOrder = [];
-  if (userSettings && userSettings.customSortOrderJson) {
-    try { customSortOrder = JSON.parse(userSettings.customSortOrderJson) || []; } catch (e2) {}
-  }
-
-  return {
-    ok: true,
-    mode,
-    email,
-    requesterName,
-    projects: rows,
-    people,
-    pmList,
-    customSortOrder,
-    phaseColors
-  };
-}
-
-// ======== UPDATE ========
-function api_update_(body) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    const email = (body && body.email) || api_activeEmail_() || '';
-    const mode = (body && body.mode) || '';
-    const payload = (body && body.payload) || {};
-
-    const ss = api_ss_();
-    const projectsSheet = api_getSheet_(ss, [APP_CONFIG.SHEETS.PROJECTS, 'Sheet 1']);
-    const table = api_readTable_(projectsSheet);
-
-    const rowIndex = String(payload.rowIndex || '');
-    if (!rowIndex) return { ok: false, error: 'Missing payload.rowIndex' };
-
-    // Find row by rowIndex column
-    const idxCol = api_findCol_(table.headers, ['rowIndex']);
-    if (!idxCol) return { ok: false, error: 'Could not find "rowIndex" column in Projects sheet.' };
-
-    let targetRowNumber = -1; // sheet row number (1-based)
-    for (let i = 0; i < table.rows.length; i++) {
-      const r = table.rows[i];
-      if (String(r[idxCol] || '') === rowIndex) {
-        targetRowNumber = table.startRow + i;
-        break;
-      }
-    }
-    if (targetRowNumber < 0) return { ok: false, error: 'rowIndex not found in sheet', rowIndex };
-
-    // Resolve name for mine-mode updates (to know which slot to write)
-    const people = api_readPeople_();
-    const userSettings = api_readUserSettingsByEmail_(email);
-    const person = people.find(p => api_norm_(p.email) === api_norm_(email));
-    const name = (userSettings && userSettings.name) || (person && person.name) || email;
-
-    // Column map (canonical)
-    const col = (keys) => api_findCol_(table.headers, keys);
-
-    const updates = [];
-
-    // Common fields that might be updated
-    const c_pm = col(['pm']);
-    const c_pmNotes = col(['pmNotes']);
-    const c_opsNotes = col(['operationalNotes']);
-    const c_d1 = col(['designer1']);
-    const c_d2 = col(['designer2']);
-    const c_d3 = col(['designer3']);
-    const c_p1 = col(['priority1']);
-    const c_p2 = col(['priority2']);
-    const c_p3 = col(['priority3']);
-    const c_n1 = col(['notes1']);
-    const c_n2 = col(['notes2']);
-    const c_n3 = col(['notes3']);
-
-    // lastModified columns
-    const c_lmDate = col(['lastModified/dateDisplay']);
-    const c_lmMs = col(['lastModified/dateMs']);
-    const c_lmBy = col(['lastModified/by']);
-    const c_lmDisp = col(['lastModified/display']);
-
-    if (mode === 'mine') {
-      // Write to the slot matching this user's name
-      const existing = api_projectFromRow_(table.rows[targetRowNumber - table.startRow]); // raw project
-      const slot = api_findMySlot_(existing, name);
-      if (!slot) return { ok: false, error: 'User not assigned to any designer slot for this project.', name, rowIndex };
-
-      if (slot === 1) {
-        if (c_p1) updates.push([c_p1, payload.priority ?? '']);
-        if (c_n1) updates.push([c_n1, payload.notes ?? '']);
-      } else if (slot === 2) {
-        if (c_p2) updates.push([c_p2, payload.priority ?? '']);
-        if (c_n2) updates.push([c_n2, payload.notes ?? '']);
-      } else if (slot === 3) {
-        if (c_p3) updates.push([c_p3, payload.priority ?? '']);
-        if (c_n3) updates.push([c_n3, payload.notes ?? '']);
-      }
-
-    } else if (mode === 'pm') {
-      if (c_pm) updates.push([c_pm, payload.pmName ?? '']);
-      if (c_pmNotes) updates.push([c_pmNotes, payload.pmNotes ?? '']);
-
-      if (c_d1) updates.push([c_d1, payload.designer1 ?? '']);
-      if (c_d2) updates.push([c_d2, payload.designer2 ?? '']);
-      if (c_d3) updates.push([c_d3, payload.designer3 ?? '']);
-
-      if (c_p1) updates.push([c_p1, payload.designer1Priority ?? '']);
-      if (c_p2) updates.push([c_p2, payload.designer2Priority ?? '']);
-      if (c_p3) updates.push([c_p3, payload.designer3Priority ?? '']);
-
-    } else if (mode === 'ops') {
-      if (c_pm) updates.push([c_pm, payload.pmName ?? '']);
-      if (c_opsNotes) updates.push([c_opsNotes, payload.operationalNotes ?? '']);
-
-      if (c_d1) updates.push([c_d1, payload.designer1 ?? '']);
-      if (c_d2) updates.push([c_d2, payload.designer2 ?? '']);
-      if (c_d3) updates.push([c_d3, payload.designer3 ?? '']);
-    }
-
-    // Apply updates
-    updates.forEach(([colIdx, val]) => {
-      projectsSheet.getRange(targetRowNumber, colIdx).setValue(val);
-    });
-
-    // Update lastModified
-    const now = new Date();
-    const nowMs = Date.now();
-    const tz = Session.getScriptTimeZone() || 'America/Los_Angeles';
-    const dateDisplay = Utilities.formatDate(now, tz, 'M/d/yyyy');
-    const display = dateDisplay;
-
-    if (c_lmDate) projectsSheet.getRange(targetRowNumber, c_lmDate).setValue(now);
-    if (c_lmMs) projectsSheet.getRange(targetRowNumber, c_lmMs).setValue(String(nowMs));
-    if (c_lmBy) projectsSheet.getRange(targetRowNumber, c_lmBy).setValue(email);
-    if (c_lmDisp) projectsSheet.getRange(targetRowNumber, c_lmDisp).setValue(display);
-
-    return { ok: true, savedAtMs: nowMs, savedAtDisplay: dateDisplay };
-
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-// ======== CUSTOM ORDER ========
-function api_customOrder_(body) {
-  const email = (body && body.email) || '';
-  const orderedRowIndexes = (body && body.orderedRowIndexes) || [];
-  const ss = api_ss_();
-  const sheet = api_getSheet_(ss, [APP_CONFIG.SHEETS.USER_SETTINGS]);
-
-  const table = api_readTable_(sheet);
-  const c_email = api_findCol_(table.headers, ['email']);
-  const c_sort = api_findCol_(table.headers, ['customSortOrderJson']);
-  const c_updated = api_findCol_(table.headers, ['updatedAtMs']);
-  if (!c_email || !c_sort) return { ok: false, error: 'User Settings sheet missing email/customSortOrderJson columns.' };
-
-  // Find user row; if not exists, append
-  let rowNum = -1;
-  for (let i = 0; i < table.rows.length; i++) {
-    if (api_norm_(table.rows[i][c_email]) === api_norm_(email)) {
-      rowNum = table.startRow + i;
-      break;
-    }
-  }
-  if (rowNum < 0) {
-    rowNum = sheet.getLastRow() + 1;
-    sheet.getRange(rowNum, c_email).setValue(email);
-  }
-
-  sheet.getRange(rowNum, c_sort).setValue(JSON.stringify(orderedRowIndexes.map(String)));
-  if (c_updated) sheet.getRange(rowNum, c_updated).setValue(String(Date.now()));
-
-  return { ok: true };
-}
-
-// ======== NOTIFICATIONS (basic; safe if sheet empty) ========
-function api_notifications_(e) {
-  const email = api_param_(e, 'email') || api_activeEmail_() || '';
-  const name = api_param_(e, 'name') || email;
-
-  const ss = api_ss_();
-  const sheet = ss.getSheetByName(APP_CONFIG.SHEETS.NOTIFICATIONS);
-  if (!sheet) return { ok: true, notifications: [] };
-
-  const table = api_readTable_(sheet);
-
-  const c_id = api_findCol_(table.headers, ['id']);
-  const c_created = api_findCol_(table.headers, ['createdAt']);
-  const c_readBy = api_findCol_(table.headers, ['readByJson']);
-  const c_targetRole = api_findCol_(table.headers, ['targetRole']);
-  const c_targetName = api_findCol_(table.headers, ['targetName']);
-  const c_title = api_findCol_(table.headers, ['title']);
-  const c_body = api_findCol_(table.headers, ['body']);
-  const c_proj = api_findCol_(table.headers, ['projectNumber']);
-
-  const userSettings = api_readUserSettingsByEmail_(email);
-  const roles = api_rolesFromRoleString_((userSettings && userSettings.role) || '');
-
-  const notifs = table.rows.map(r => {
-    let readBy = {};
-    try { readBy = JSON.parse(r[c_readBy] || '{}') || {}; } catch (e2) {}
-    return {
-      id: r[c_id],
-      createdAt: r[c_created],
-      readByJson: r[c_readBy] || '{}',
-      readBy,
-      targetRole: r[c_targetRole] || '',
-      targetName: r[c_targetName] || '',
-      title: r[c_title] || '',
-      body: r[c_body] || '',
-      projectNumber: r[c_proj] || ''
-    };
-  }).filter(n => {
-    // target matching
-    const tr = api_norm_(n.targetRole);
-    const tn = api_norm_(n.targetName);
-    const roleMatch = !tr || roles.some(rr => api_norm_(rr) === tr);
-    const nameMatch = !tn || api_norm_(name) === tn;
-    const unread = !n.readBy || !n.readBy[email];
-    return unread && (roleMatch || nameMatch);
   });
 
-  return { ok: true, notifications: notifs };
-}
-
-function api_notificationsAck_(body) {
-  const email = (body && body.email) || '';
-  const id = (body && body.id) || '';
-  if (!email || !id) return { ok: false, error: 'Missing email or id' };
-
-  const ss = api_ss_();
-  const sheet = ss.getSheetByName(APP_CONFIG.SHEETS.NOTIFICATIONS);
-  if (!sheet) return { ok: true };
-
-  const table = api_readTable_(sheet);
-  const c_id = api_findCol_(table.headers, ['id']);
-  const c_readBy = api_findCol_(table.headers, ['readByJson']);
-  if (!c_id || !c_readBy) return { ok: false, error: 'Notifications sheet missing id/readByJson.' };
-
-  for (let i = 0; i < table.rows.length; i++) {
-    if (String(table.rows[i][c_id] || '') === String(id)) {
-      const rowNum = table.startRow + i;
-      let readBy = {};
-      try { readBy = JSON.parse(table.rows[i][c_readBy] || '{}') || {}; } catch (e2) {}
-      readBy[email] = Date.now();
-      sheet.getRange(rowNum, c_readBy).setValue(JSON.stringify(readBy));
-      break;
-    }
-  }
-  return { ok: true };
-}
-
-// ======== Helpers ========
-function api_ss_() {
-  const props = PropertiesService.getScriptProperties();
-  const id = props.getProperty('SPREADSHEET_ID') || APP_CONFIG.SPREADSHEET_ID_FALLBACK || '';
-  if (!id) throw new Error('Missing SPREADSHEET_ID. Set it in Script Properties.');
-  return SpreadsheetApp.openById(id);
-}
-
-function api_getSheet_(ss, names) {
-  for (const n of names) {
-    const sh = ss.getSheetByName(n);
-    if (sh) return sh;
-  }
-  throw new Error('Could not find any of these sheets: ' + JSON.stringify(names));
-}
-
-function api_readTable_(sheet) {
-  const rng = sheet.getDataRange();
-  const values = rng.getValues();
-  const headerRow = APP_CONFIG.HEADER_ROW;
-
-  const headers = {};
-  const headerVals = values[headerRow - 1] || [];
-  for (let c = 0; c < headerVals.length; c++) {
-    const h = headerVals[c];
-    if (!h) continue;
-    const key = api_normHeader_(h);
-    // 1-based col index
-    if (!headers[key]) headers[key] = c + 1;
+  // Re-read if we mutated to be safe
+  if (mutated) {
+    const newHeaderRange = sheet.getRange(1, 1, 1, sheet.getLastColumn());
+    headerVals = newHeaderRange.getValues()[0].map(h => String(h || "").trim());
   }
 
-  const startRow = headerRow + 1;
-  const rows = [];
-  for (let r = startRow; r <= values.length; r++) {
-    const row = values[r - 1];
-    // skip blank rows (no projectName + no projectNumber)
-    if (!row || row.join('').trim() === '') continue;
-    rows.push(row);
-  }
-
-  return { headers, rows, startRow };
+  const map = {};
+  headerVals.forEach((h, idx) => {
+    if (h) map[h] = idx;
+  });
+  return map;
 }
 
-function api_findCol_(headers, variants) {
-  for (const v of variants) {
-    const k = api_normHeader_(v);
-    if (headers[k]) return headers[k];
-  }
-  return null;
-}
+function getUserByEmail_(email) {
+  const usersSh = getSheet_(CFG.SHEET_USERS);
+  const values = usersSh.getDataRange().getValues();
+  if (values.length < 2) return null;
 
-function api_projectFromRow_(row) {
-  // Minimal canonical extract from row array, using safe indices later in api_toUiRow_
-  // We'll keep raw values in an object by canonical field names.
-  // This is a “best effort” — if your sheet uses the standard headers from db.json->xlsx, it will match perfectly.
-  const raw = {};
-  // We'll populate later using header-based getters in api_toUiRow_ via direct col reads if needed.
-  // For simplicity, store row array itself.
-  raw.__row = row;
-  return raw;
-}
-
-function api_toUiRow_(raw) {
-  // Re-read using headers each time is expensive; we already have row array only.
-  // Instead, we use a fixed mapping when the sheet uses canonical headers exported from db.json->xlsx:
-  // Columns 1..26 match: id, projectName, status, createdDate, projectNumber, rowIndex, lastModified/*, pmPriority, pmNotes, pm, priority/notes/designer 1..3, internalId, operational, operationalNotes
-  const r = raw.__row || [];
-
-  const id = r[0];
-  const projectName = r[1];
-  const status = r[2];
-  const createdDate = r[3];
-  const projectNumber = r[4];
-  const rowIndex = r[5];
-
-  const lastModified = {
-    dateDisplay: r[6] || '',
-    dateMs: r[7] || '',
-    by: r[8] || '',
-    display: r[9] || ''
-  };
-
-  const pmPriority = r[10] || '';
-  const pmNotes = r[11] || '';
-  const pmName = r[12] || '';
-
-  const team = [
-    { slot: 1, name: r[15] || 'Unassigned', priority: r[13] || '', notes: r[14] || '', dateDisplay: '' },
-    { slot: 2, name: r[18] || 'Unassigned', priority: r[16] || '', notes: r[17] || '', dateDisplay: '' },
-    { slot: 3, name: r[21] || 'Unassigned', priority: r[19] || '', notes: r[20] || '', dateDisplay: '' }
-  ];
-
-  const internalId = r[22] || '';
-  const operational = r[23] || '';
-  const operationalNotes = r[24] || '';
-
-  return {
-    id,
-    rowIndex: String(rowIndex || ''),
-    projectNumber: String(projectNumber || ''),
-    projectName: String(projectName || ''),
-    status: String(status || ''),
-    createdDate: createdDate || '',
-    internalId: String(internalId || ''),
-    operational,
-    operationalNotes: String(operationalNotes || ''),
-    lastModified,
-    pmName: String(pmName || ''),
-    pm: {
-      priority: String(pmPriority || ''),
-      notes: String(pmNotes || ''),
-      dateDisplay: ''
-    },
-    team
-  };
-}
-
-function api_attachMySlot_(uiRow, requesterName) {
-  const nm = api_norm_(requesterName);
-  const found = uiRow.team.find(t => api_norm_(t.name) === nm);
-  if (found) uiRow.my = { slot: found.slot, priority: found.priority, notes: found.notes, dateDisplay: found.dateDisplay || '' };
-  return uiRow;
-}
-
-function api_findMySlot_(existingRawProject, requesterName) {
-  const ui = api_toUiRow_(existingRawProject);
-  const nm = api_norm_(requesterName);
-  const found = ui.team.find(t => api_norm_(t.name) === nm);
-  return found ? found.slot : null;
-}
-
-function api_readPeople_() {
-  const ss = api_ss_();
-  const sheet = ss.getSheetByName(APP_CONFIG.SHEETS.PEOPLE);
-  if (!sheet) return [];
-  const table = api_readTable_(sheet);
-
-  // People sheet expected columns: Role, Name, Email
-  const out = [];
-  for (const row of table.rows) {
-    const role = row[0];
-    const name = row[1];
-    const email = row[2];
-    if (name && email && role) out.push({ role: String(role), name: String(name), email: String(email) });
-  }
-  return out;
-}
-
-function api_readPhaseColors_() {
-  const ss = api_ss_();
-  const sheet = ss.getSheetByName(APP_CONFIG.SHEETS.COLORS);
-  if (!sheet) return {};
-  const table = api_readTable_(sheet);
-
-  // Expected: Color (Hex), Phase
-  const colors = {};
-  for (const row of table.rows) {
-    const hex = row[0];
-    const phase = row[1];
-    if (hex && phase) colors[String(phase)] = String(hex);
-  }
-  return colors;
-}
-
-function api_readUserSettingsByEmail_(email) {
-  if (!email) return null;
-  const ss = api_ss_();
-  const sheet = ss.getSheetByName(APP_CONFIG.SHEETS.USER_SETTINGS);
-  if (!sheet) return null;
-
-  const table = api_readTable_(sheet);
-  // columns: email, name, role, customSortOrderJson, updatedAtMs
-  for (const row of table.rows) {
-    if (api_norm_(row[0]) === api_norm_(email)) {
+  // Headers: Role | Name | Email
+  for (let r = 1; r < values.length; r++) {
+    const role = values[r][0];
+    const name = values[r][1];
+    const em = values[r][2];
+    if (normalize_(em) === normalize_(email)) {
       return {
-        email: row[0] || '',
-        name: row[1] || '',
-        role: row[2] || '',
-        customSortOrderJson: row[3] || '',
-        updatedAtMs: row[4] || ''
+        role: String(role || ""),
+        name: String(name || ""),
+        email: String(em || "")
       };
     }
   }
   return null;
 }
 
-function api_rolesFromRoleString_(roleStr) {
-  const s = String(roleStr || '').trim();
-  if (!s) return [];
-  // Accept comma-separated roles or single role
-  return s.split(',').map(x => x.trim()).filter(Boolean);
-}
-
-function api_activeEmail_() {
-  try {
-    const e = Session.getActiveUser().getEmail();
-    return e || '';
-  } catch (err) {
-    return '';
-  }
-}
-
-function api_param_(e, key) {
-  try {
-    return (e && e.parameter && e.parameter[key]) ? String(e.parameter[key]) : '';
-  } catch (err) {
-    return '';
-  }
-}
-
-function api_parseBody_(e) {
-  try {
-    const txt = e && e.postData && e.postData.contents ? e.postData.contents : '';
-    return txt ? JSON.parse(txt) : {};
-  } catch (err) {
-    return {};
-  }
-}
-
-function api_json_(obj, code) {
-  const out = ContentService.createTextOutput(JSON.stringify(obj));
-  out.setMimeType(ContentService.MimeType.JSON);
-  // Apps Script doesn't really support setting status code in ContentService;
-  // we include "ok" and "error" fields instead.
-  return out;
-}
-
-function api_norm_(s) { return String(s || '').toLowerCase().trim(); }
-function api_normHeader_(s) { return api_norm_(s).replace(/\s+/g, '').replace(/[^\w]/g, ''); }
-
-function api_unique_(arr) {
-  const seen = new Set();
+function getAllUsers_() {
+  const usersSh = getSheet_(CFG.SHEET_USERS);
+  const values = usersSh.getDataRange().getValues();
   const out = [];
-  arr.forEach(x => {
-    const k = String(x || '');
-    if (!k) return;
-    if (!seen.has(k)) { seen.add(k); out.push(k); }
-  });
+  for (let r = 1; r < values.length; r++) {
+    const role = values[r][0];
+    const name = values[r][1];
+    const email = values[r][2];
+    if (!email && !name) continue;
+    out.push({
+      role: String(role || ""),
+      name: String(name || ""),
+      email: String(email || "")
+    });
+  }
   return out;
+}
+
+function getPhaseColors_() {
+  const sh = getSheet_(CFG.SHEET_COLORS);
+  const values = sh.getDataRange().getValues();
+  const colors = {};
+  for (let r = 1; r < values.length; r++) {
+    const hex = values[r][0];
+    const phase = values[r][1];
+    if (!hex || !phase) continue;
+    colors[normalize_(phase)] = String(hex).trim();
+  }
+  return colors;
+}
+
+function getProjectsSheetMap_() {
+  const sh = getSheet_(CFG.SHEET_PROJECTS);
+  const required = [
+    "Project #",
+    "Project",
+    "Status",
+    "Internal ID",
+    "PM",
+    "Operational",
+    "PM to Set Priority",
+    "PM notes",
+    "Operational notes",
+    "DESIGNER1",
+    "DESIGNER2",
+    "DESIGNER3",
+    "Prioraty - DESIGNER1",
+    "Prioraty - DESIGNER2",
+    "Prioraty - DESIGNER3",
+    "Notes - DESIGNER1",
+    "Notes - DESIGNER2",
+    "Notes - DESIGNER3",
+    "Date - DESIGNER1",
+    "Date - DESIGNER2",
+    "Date - DESIGNER3",
+    "Date - PM to Set Priority",
+    "Date - PM notes",
+    "Date - Operational"
+  ];
+  const map = ensureColumns_(sh, required);
+  return { sh, map };
+}
+
+function buildTeamFromRow_(row, map) {
+  const team = [];
+  const dNames = [
+    row[map["DESIGNER1"]],
+    row[map["DESIGNER2"]],
+    row[map["DESIGNER3"]]
+  ];
+  const prios = [
+    row[map["Prioraty - DESIGNER1"]],
+    row[map["Prioraty - DESIGNER2"]],
+    row[map["Prioraty - DESIGNER3"]]
+  ];
+  const notes = [
+    row[map["Notes - DESIGNER1"]],
+    row[map["Notes - DESIGNER2"]],
+    row[map["Notes - DESIGNER3"]]
+  ];
+  const dates = [
+    row[map["Date - DESIGNER1"]],
+    row[map["Date - DESIGNER2"]],
+    row[map["Date - DESIGNER3"]]
+  ];
+
+  for (let i = 0; i < 3; i++) {
+    team.push({
+      slot: i + 1,
+      name: String(dNames[i] || ""),
+      priority: String(prios[i] == null ? "" : prios[i]),
+      notes: String(notes[i] || ""),
+      dateDisplay: fmtDate_(dates[i])
+    });
+  }
+  return team;
+}
+
+function buildPMFieldsFromRow_(row, map) {
+  return {
+    priority: String(row[map["PM to Set Priority"]] == null ? "" : row[map["PM to Set Priority"]]),
+    notes: String(row[map["PM notes"]] || ""),
+    datePriorityDisplay: fmtDate_(row[map["Date - PM to Set Priority"]]),
+    dateNotesDisplay: fmtDate_(row[map["Date - PM notes"]])
+  };
+}
+
+function getCustomSortOrder_(email, pmName) {
+  const sh = getSheet_(CFG.SHEET_USER_SETTINGS);
+  const values = sh.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  // Headers: email | name | role | customSortOrderJson | updatedAtMs
+  for (let r = 1; r < values.length; r++) {
+    const em = values[r][0];
+    if (normalize_(em) !== normalize_(email)) continue;
+
+    const jsonStr = values[r][3];
+    const obj = safeJsonParse_(jsonStr, {});
+    const arr = obj && obj[pmName] ? obj[pmName] : [];
+    return Array.isArray(arr) ? arr.map(String) : [];
+  }
+  return [];
+}
+
+function setCustomSortOrder_(email, name, role, pmName, orderedRowIndexes) {
+  const sh = getSheet_(CFG.SHEET_USER_SETTINGS);
+  const values = sh.getDataRange().getValues();
+
+  let rowIndex = -1;
+  for (let r = 1; r < values.length; r++) {
+    if (normalize_(values[r][0]) === normalize_(email)) {
+      rowIndex = r + 1; // sheet row
+      break;
+    }
+  }
+
+  const nowMs = Date.now();
+  const orderObj = {};
+  if (rowIndex !== -1) {
+    const existingJson = sh.getRange(rowIndex, 4).getValue();
+    const existingObj = safeJsonParse_(existingJson, {});
+    Object.assign(orderObj, existingObj || {});
+  }
+
+  orderObj[pmName] = (orderedRowIndexes || []).map(String);
+
+  if (rowIndex === -1) {
+    sh.appendRow([email, name || "", role || "", JSON.stringify(orderObj), nowMs]);
+  } else {
+    sh.getRange(rowIndex, 1, 1, 5).setValues([[
+      email,
+      name || sh.getRange(rowIndex, 2).getValue() || "",
+      role || sh.getRange(rowIndex, 3).getValue() || "",
+      JSON.stringify(orderObj),
+      nowMs
+    ]]);
+  }
+
+  return { success: true };
+}
+
+/* =========================
+   Public API
+========================= */
+
+function apiBootstrap(email) {
+  const e = assertDomain_(email || getMyEmail_());
+  const user = getUserByEmail_(e);
+
+  if (!user) {
+    // Don’t break the UI: return something usable even if they’re missing from the list.
+    return {
+      email: e,
+      name: e.split("@")[0],
+      roles: ["DESIGNER"],
+      isPM: false,
+      isOps: false,
+      priorityOptions: ["", "Low", "Medium", "High", "Urgent", "On Hold", "Completed", "Abandoned"],
+      phaseColors: getPhaseColors_(),
+      logoUrl: ""
+    };
+  }
+
+  const roleStr = String(user.role || "");
+  const roles = roleStr
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(s => s.toUpperCase());
+
+  return {
+    email: user.email,
+    name: user.name,
+    roles: roles,
+    isPM: roles.includes("PM"),
+    isOps: roles.includes("OPERATIONAL"),
+    priorityOptions: ["", "Low", "Medium", "High", "Urgent", "On Hold", "Completed", "Abandoned"],
+    phaseColors: getPhaseColors_(),
+    // Keep empty for now (your old Node version hardcoded a GitHub URL).
+    // We can re-add your logoUrl later once the UI wiring is stable.
+    logoUrl: ""
+  };
+}
+
+/**
+ * params:
+ *   {
+ *     email: string,
+ *     mode: 'mine' | 'pm' | 'ops',
+ *     pmQuery?: string,              // for PM view filtering
+ *     includeUnassigned?: boolean    // PM view toggle
+ *   }
+ *
+ * returns:
+ *   {
+ *     projects: [...],
+ *     people: [...],
+ *     pmList?: [...],
+ *     statusList?: [...],
+ *     totalUnassigned?: number,
+ *     designerCounts?: {...},
+ *     customSortOrder?: [...]
+ *   }
+ */
+function apiProjects(params) {
+  const email = assertDomain_((params && params.email) || getMyEmail_());
+  const mode = (params && params.mode) || "mine";
+  const pmQuery = (params && params.pmQuery) || "";
+  const includeUnassigned = !!(params && params.includeUnassigned);
+
+  const user = getUserByEmail_(email);
+  if (!user) throw new Error("Access denied (user not found in Designer Emails).");
+
+  const allUsers = getAllUsers_();
+  const { sh, map } = getProjectsSheetMap_();
+  const values = sh.getDataRange().getValues();
+
+  const projects = [];
+
+  for (let r = 1; r < values.length; r++) {
+    const row = values[r];
+    const projectNumber = row[map["Project #"]];
+    const projectName = row[map["Project"]];
+    const status = row[map["Status"]];
+
+    // skip empty rows
+    if (!projectNumber && !projectName && !status) continue;
+
+    const rowIndex = String(r + 1); // sheet row number as string (matches existing frontend expectations)
+
+    const team = buildTeamFromRow_(row, map);
+    const pmName = String(row[map["PM"]] || "");
+    const pm = buildPMFieldsFromRow_(row, map);
+
+    const operationalUser = String(row[map["Operational"]] || "");
+    const operationalNotes = String(row[map["Operational notes"]] || "");
+
+    const base = {
+      rowIndex,
+      projectNumber: String(projectNumber || ""),
+      projectName: String(projectName || ""),
+      status: String(status || ""),
+      internalId: String(row[map["Internal ID"]] || ""),
+      pmName: pmName,
+      pm: pm,
+      team: team,
+      operational: {
+        user: operationalUser,
+        notes: operationalNotes
+      },
+      // Optional (used for sorting in a few places); safe if missing.
+      lastModified: {
+        dateDisplay: "",
+        dateMs: 0,
+        by: "",
+        display: ""
+      },
+      missing: []
+    };
+
+    // For Designer tab, the UI expects `my` (the current user's slot).
+    if (mode === "mine") {
+      const mySlot = team.find(t => normalize_(t.name) === normalize_(user.name));
+      base.my = mySlot
+        ? { slot: mySlot.slot, priority: mySlot.priority, notes: mySlot.notes, dateDisplay: mySlot.dateDisplay }
+        : { slot: null, priority: "", notes: "", dateDisplay: "" };
+    }
+
+    projects.push(base);
+  }
+
+  // Build lists for filters
+  const pmSet = new Set();
+  const statusSet = new Set();
+  let totalUnassigned = 0;
+
+  projects.forEach(p => {
+    const pmName = String(p.pmName || "").trim();
+    if (pmName) pmSet.add(pmName);
+    else pmSet.add("Unassigned");
+
+    const st = String(p.status || "").trim();
+    if (st) statusSet.add(st);
+
+    if (!pmName || normalize_(pmName) === "unassigned") totalUnassigned += 1;
+  });
+
+  // Filter by mode
+  let filtered = projects;
+
+  if (mode === "mine") {
+    filtered = projects.filter(p => {
+      const names = (p.team || []).map(t => normalize_(t.name));
+      return names.includes(normalize_(user.name));
+    });
+  } else if (mode === "pm") {
+    const pmName = pmQuery || user.name;
+    filtered = projects.filter(p => {
+      const pPm = String(p.pmName || "").trim();
+      if (normalize_(pmName) === "unassigned") {
+        return !pPm || normalize_(pPm) === "unassigned";
+      }
+      if (includeUnassigned) {
+        return normalize_(pPm) === normalize_(pmName) || !pPm || normalize_(pPm) === "unassigned";
+      }
+      return normalize_(pPm) === normalize_(pmName);
+    });
+  } else if (mode === "ops") {
+    filtered = projects;
+  }
+
+  // Designer counts (simple, used for PM diagnostics)
+  const designerCounts = {};
+  filtered.forEach(p => {
+    (p.team || []).forEach(t => {
+      const n = String(t.name || "").trim();
+      if (!n) return;
+      if (!designerCounts[n]) designerCounts[n] = 0;
+      designerCounts[n] += 1;
+    });
+  });
+
+  const response = {
+    projects: filtered,
+    people: allUsers
+  };
+
+  if (mode === "pm") {
+    const pmName = pmQuery || user.name;
+    response.pmList = Array.from(pmSet).sort((a, b) => a.localeCompare(b));
+    if (!response.pmList.includes("Unassigned")) response.pmList.unshift("Unassigned");
+    response.statusList = Array.from(statusSet).sort((a, b) => a.localeCompare(b));
+    response.totalUnassigned = totalUnassigned;
+    response.designerCounts = designerCounts;
+    response.customSortOrder = getCustomSortOrder_(email, pmName);
+  }
+
+  return response;
+}
+
+/**
+ * Mirrors your old /api/update body:
+ * {
+ *   email,
+ *   mode: 'mine' | 'pm' | 'ops',
+ *   payload: { rowIndex, ... }
+ * }
+ */
+function apiUpdate(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const email = assertDomain_((body && body.email) || getMyEmail_());
+    const mode = (body && body.mode) || "mine";
+    const payload = (body && body.payload) || {};
+
+    const user = getUserByEmail_(email);
+    if (!user) throw new Error("Access denied (user not found in Designer Emails).");
+
+    const { sh, map } = getProjectsSheetMap_();
+
+    const rowIndex = Number(payload.rowIndex);
+    if (!rowIndex || rowIndex < 2) throw new Error("Invalid rowIndex.");
+
+    // Read current row to detect designer slot, and to avoid overwriting unrelated columns.
+    const rowRange = sh.getRange(rowIndex, 1, 1, sh.getLastColumn());
+    const row = rowRange.getValues()[0];
+
+    const team = buildTeamFromRow_(row, map);
+
+    const d1Name = normalize_(team[0].name);
+    const d2Name = normalize_(team[1].name);
+    const d3Name = normalize_(team[2].name);
+    const meName = normalize_(user.name);
+
+    const nowDate = now_();
+
+    // --- MODE: mine (designer edits their priority/notes for their assigned slot)
+    if (mode === "mine") {
+      const mySlot =
+        (d1Name === meName && 1) ||
+        (d2Name === meName && 2) ||
+        (d3Name === meName && 3) ||
+        null;
+
+      if (!mySlot) {
+        // Don’t hard-fail the UI; just respond ok.
+        return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
+      }
+
+      const prioHeader = `Prioraty - DESIGNER${mySlot}`;
+      const notesHeader = `Notes - DESIGNER${mySlot}`;
+      const dateHeader = `Date - DESIGNER${mySlot}`;
+
+      if (payload.priority !== undefined) row[map[prioHeader]] = payload.priority;
+      if (payload.notes !== undefined) row[map[notesHeader]] = payload.notes;
+      row[map[dateHeader]] = nowDate;
+
+      rowRange.setValues([row]);
+      return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
+    }
+
+    // --- MODE: pm (PM edits assignments + PM notes)
+    if (mode === "pm") {
+      // PM notes
+      if (payload.pmNotes !== undefined) {
+        row[map["PM notes"]] = payload.pmNotes;
+        row[map["Date - PM notes"]] = nowDate;
+      }
+
+      // PM assignment
+      if (payload.pmName !== undefined) {
+        row[map["PM"]] = payload.pmName;
+      }
+
+      // Designers + their priorities
+      for (let slot = 1; slot <= 3; slot++) {
+        const dHeader = `DESIGNER${slot}`;
+        const pHeader = `Prioraty - DESIGNER${slot}`;
+        const nHeader = `Notes - DESIGNER${slot}`;
+        const dtHeader = `Date - DESIGNER${slot}`;
+
+        const newDesigner = payload[`designer${slot}`];
+        const newPrio = payload[`designer${slot}Priority`];
+
+        if (newDesigner !== undefined) {
+          const oldDesigner = String(row[map[dHeader]] || "");
+          if (String(newDesigner || "") !== oldDesigner) {
+            // When a designer changes, clear their priority/notes/date for clean handoff (matches your local behavior).
+            row[map[pHeader]] = "";
+            row[map[nHeader]] = "";
+            row[map[dtHeader]] = "";
+          }
+          row[map[dHeader]] = newDesigner;
+        }
+
+        if (newPrio !== undefined) {
+          row[map[pHeader]] = newPrio;
+          row[map[dtHeader]] = nowDate;
+        }
+      }
+
+      rowRange.setValues([row]);
+      return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
+    }
+
+    // --- MODE: ops (ops edits PM/designer assignments + operational notes)
+    if (mode === "ops") {
+      if (payload.pmName !== undefined) row[map["PM"]] = payload.pmName;
+
+      for (let slot = 1; slot <= 3; slot++) {
+        const dHeader = `DESIGNER${slot}`;
+        const newDesigner = payload[`designer${slot}`];
+        if (newDesigner !== undefined) row[map[dHeader]] = newDesigner;
+      }
+
+      if (payload.operationalNotes !== undefined) {
+        row[map["Operational notes"]] = payload.operationalNotes;
+        row[map["Date - Operational"]] = nowDate;
+      }
+
+      rowRange.setValues([row]);
+      return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
+    }
+
+    return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function apiSaveCustomOrder(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const email = assertDomain_((body && body.email) || getMyEmail_());
+    const pmName = String((body && body.pmName) || "").trim();
+    const orderedRowIndexes = (body && body.orderedRowIndexes) || [];
+
+    const user = getUserByEmail_(email);
+    if (!user) throw new Error("User not found");
+
+    if (!pmName) throw new Error("Missing pmName");
+
+    return setCustomSortOrder_(email, user.name, user.role, pmName, orderedRowIndexes);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* =========================
+   Notifications (basic wiring)
+   (We keep it minimal for now; we can expand later without changing UI.)
+========================= */
+
+function getNotificationsSheetMap_() {
+  const sh = getSheet_(CFG.SHEET_NOTIFICATIONS);
+
+  // We’ll store notifications in a schema compatible with your old db.json objects.
+  const required = [
+    "id",
+    "createdAt",      // ms
+    "readByJson",     // JSON array string
+    "targetRole",     // 'PM' | 'DESIGNER' | 'ANY'
+    "targetName",     // name or email (optional if ANY)
+    "title",
+    "body",           // HTML string
+    "projectNumber"
+  ];
+
+  const map = ensureColumns_(sh, required);
+  return { sh, map };
+}
+
+function apiGetNotifications(params) {
+  const email = assertDomain_((params && params.email) || getMyEmail_());
+  const name = String((params && params.name) || "").trim();
+
+  const { sh, map } = getNotificationsSheetMap_();
+  const values = sh.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  const out = [];
+
+  for (let r = 1; r < values.length; r++) {
+    const row = values[r];
+    const id = row[map["id"]];
+    if (!id) continue;
+
+    const createdAt = Number(row[map["createdAt"]] || 0);
+    const readBy = safeJsonParse_(row[map["readByJson"]], []);
+    const targetRole = String(row[map["targetRole"]] || "ANY").toUpperCase();
+    const targetName = String(row[map["targetName"]] || "");
+    const title = String(row[map["title"]] || "");
+    const body = String(row[map["body"]] || "");
+    const projectNumber = String(row[map["projectNumber"]] || "");
+
+    // unread?
+    if (Array.isArray(readBy) && readBy.includes(email)) continue;
+
+    const tNorm = normalize_(targetName);
+    const matchesName = tNorm && (tNorm === normalize_(name) || tNorm === normalize_(email));
+    const roleOk =
+      (targetRole === "ANY" && (!targetName || matchesName)) ||
+      (targetRole === "PM" && matchesName) ||
+      (targetRole === "DESIGNER" && matchesName);
+
+    if (!roleOk) continue;
+
+    out.push({
+      id: String(id),
+      createdAt: createdAt,
+      readBy: Array.isArray(readBy) ? readBy : [],
+      targetRole,
+      targetName,
+      title,
+      body,
+      projectNumber
+    });
+  }
+
+  out.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return out;
+}
+
+function apiAckNotification(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const email = assertDomain_((body && body.email) || getMyEmail_());
+    const id = String((body && body.id) || "");
+    if (!id) return { success: true };
+
+    const { sh, map } = getNotificationsSheetMap_();
+    const values = sh.getDataRange().getValues();
+    if (values.length < 2) return { success: true };
+
+    for (let r = 1; r < values.length; r++) {
+      const row = values[r];
+      if (String(row[map["id"]]) !== id) continue;
+
+      const readBy = safeJsonParse_(row[map["readByJson"]], []);
+      const arr = Array.isArray(readBy) ? readBy : [];
+      if (!arr.includes(email)) arr.push(email);
+
+      // write back just that cell
+      sh.getRange(r + 1, map["readByJson"] + 1).setValue(JSON.stringify(arr));
+      break;
+    }
+
+    return { success: true };
+  } finally {
+    lock.releaseLock();
+  }
 }
