@@ -16,6 +16,16 @@
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString();
     }
 
+    function getUser_() {
+        const email = (window.currentUser && window.currentUser.email) || '';
+        const name =
+            (window.currentUser && window.currentUser.name) ||
+            (STATE.boot && STATE.boot.name) ||
+            (window.BOOT && window.BOOT.name) ||
+            '';
+        return { email, name };
+    }
+
     // --- AUDIO UTILS ---
     function ensureAudio() {
         if (!STATE.audioCtx) {
@@ -25,9 +35,13 @@
         if (STATE.audioCtx && STATE.audioCtx.state === 'suspended') STATE.audioCtx.resume();
         return STATE.audioCtx;
     }
+
     function playSound() {
         try {
-            const audio = new Audio('/sounds/notification.mp3');
+            // Default keeps your original behavior, but allows an override later:
+            // window.NOTIF_SOUND_URL = 'https://raw.githubusercontent.com/.../notification.mp3'
+            const url = window.NOTIF_SOUND_URL || '/sounds/notification.mp3';
+            const audio = new Audio(url);
             audio.volume = 0.5; // Set volume to 50%
             audio.play().catch(err => {
                 console.warn('[NOTIF] Could not play sound:', err);
@@ -37,22 +51,46 @@
         }
     }
 
-    // --- API ---
+    // --- API (GAS + local fallback) ---
+    async function apiGetNotifications_(email, name) {
+        // Apps Script mode
+        if (window.google && google.script && google.script.run && typeof gasCall === 'function') {
+            return gasCall('apiGetNotifications', { email, name });
+        }
+        // Local/Express fallback
+        const res = await fetch(`/api/notifications?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`);
+        return res.json();
+    }
+
+    async function apiAckNotification_(id, email) {
+        // Apps Script mode
+        if (window.google && google.script && google.script.run && typeof gasCall === 'function') {
+            return gasCall('apiAckNotification', { id, email });
+        }
+        // Local/Express fallback
+        return fetch('/api/notifications/ack', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, email })
+        });
+    }
+
     async function fetchNotifications() {
-        if (!window.currentUser?.email) return;
+        const { email, name } = getUser_();
+        if (!email) return;
+
         try {
-            const res = await fetch(`/api/notifications?email=${encodeURIComponent(window.currentUser.email)}&name=${encodeURIComponent(window.currentUser.name)}`);
-            const data = await res.json();
+            const data = await apiGetNotifications_(email, name);
 
             // Check for NEW unread items
-            const userEmail = window.currentUser.email;
-            const newUnread = data.filter(item => !item.readBy?.includes(userEmail));
-            const oldUnread = STATE.history.filter(item => !item.readBy?.includes(userEmail));
+            const userEmail = email;
+            const newUnread = (data || []).filter(item => !item.readBy?.includes(userEmail));
+            const oldUnread = (STATE.history || []).filter(item => !item.readBy?.includes(userEmail));
 
             // Detect if there are any NEW notifications (not just unread but actually NEW)
             if (newUnread.length > oldUnread.length) {
                 // Find the truly new ones by comparing IDs
-                const oldIds = new Set(STATE.history.map(n => n.id));
+                const oldIds = new Set((STATE.history || []).map(n => n.id));
                 const brandNew = newUnread.filter(n => !oldIds.has(n.id));
 
                 // Show immediate popups for brand new notifications
@@ -66,7 +104,7 @@
                 }
             }
 
-            STATE.history = data;
+            STATE.history = data || [];
             renderInbox();
             updateFabCount();
             renderActiveToasts(); // Update toast area
@@ -77,18 +115,14 @@
     }
 
     function updateBadges() {
-        if (!window.currentUser?.email) return;
-        const myEmail = window.currentUser.email;
+        const { email } = getUser_();
+        if (!email) return;
 
         // Filter unread
-        const unread = STATE.history.filter(n => !n.readBy?.includes(myEmail));
+        const unread = STATE.history.filter(n => !n.readBy?.includes(email));
 
         // Count by Role
-        // PM View Badges (Notifications targeted at PMs)
         const pmCount = unread.filter(n => n.targetRole === 'PM').length;
-
-        // Designer View Badges (Notifications targeted at Designers or ANY/Confetti)
-        // Note: Confetti (ANY) counts for Designer View usually
         const desCount = unread.filter(n => n.targetRole === 'DESIGNER' || n.targetRole === 'ANY' || !n.targetRole).length;
 
         renderTabBadge('tabPM', pmCount);
@@ -114,21 +148,22 @@
     }
 
     async function markAsRead(id) {
-        if (!window.currentUser?.email) return;
+        const { email } = getUser_();
+        if (!email) return;
+
         try {
-            await fetch('/api/notifications/ack', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, email: window.currentUser.email })
-            });
+            await apiAckNotification_(id, email);
+
             // Optimistic update
             const n = STATE.history.find(x => x.id === id);
             if (n) {
                 n.readBy = n.readBy || [];
-                n.readBy.push(window.currentUser.email);
+                if (!n.readBy.includes(email)) n.readBy.push(email);
             }
+
             renderInbox();
             updateFabCount();
+            updateBadges();
         } catch (e) { }
     }
 
@@ -137,7 +172,7 @@
         if (document.getElementById('inbox-fab')) return;
         const fab = document.createElement('div');
         fab.id = 'inbox-fab';
-        fab.className = 'inbox-fab'; // Add CSS class if needed
+        fab.className = 'inbox-fab';
         fab.style.cssText = "position:fixed; bottom:20px; right:20px; width:50px; height:50px; background:#3b82f6; border-radius:50%; box-shadow:0 4px 6px rgba(0,0,0,0.2); z-index:1500; display:flex; align-items:center; justify-content:center; color:white; cursor:pointer;";
         fab.innerHTML = `<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>`;
 
@@ -195,9 +230,10 @@
     }
 
     function updateFabCount() {
+        const { email } = getUser_();
         const b = document.getElementById('inbox-badge');
-        // Count only ACKNOWLEDGED/READ notifications for bell badge
-        const count = STATE.history.filter(item => item.readBy?.includes(window.currentUser?.email)).length;
+        // Keep your original logic (badge counts acknowledged/read)
+        const count = STATE.history.filter(item => item.readBy?.includes(email)).length;
         if (b) {
             b.innerText = count;
             b.style.display = count > 0 ? 'block' : 'none';
@@ -267,7 +303,7 @@
         const toast = document.createElement('div');
         toast.id = 'toast-' + notif.id;
 
-        // FIX: Sticky Toast for Confetti (Legacy)
+        // Sticky Toast for Confetti (Legacy)
         if (notif.type === 'CONFETTI') {
             toast.dataset.persistent = 'true';
         }
@@ -340,12 +376,9 @@
 
         overlay.innerHTML = `
             <div style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); width:400px; max-width:90%; padding:24px; border-radius:16px; box-shadow:0 20px 50px rgba(0,0,0,0.3); color:white; text-align:center; position:relative; overflow:hidden; border:1px solid rgba(255,255,255,0.2);">
-                <!-- Shine effect -->
                 <div style="position:absolute; top:-50%; left:-50%; width:200%; height:200%; background:radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%); pointer-events:none;"></div>
-                
                 <div style="font-size:40px; margin-bottom:12px;">🎉</div>
                 <h2 style="margin:0 0 8px 0; font-size:24px; font-weight:800; letter-spacing:-0.5px;">${notif.status || 'Project Update!'}</h2>
-                
                 <div style="background:rgba(0,0,0,0.2); padding:16px; border-radius:12px; margin:16px 0;">
                     <div style="font-size:11px; text-transform:uppercase; opacity:0.7; letter-spacing:1px; margin-bottom:4px;">PROJECT</div>
                     <div style="font-size:18px; font-weight:700; line-height:1.3;">${notif.projectName || 'Project'}</div>
@@ -371,7 +404,6 @@
 
         document.body.appendChild(overlay);
 
-        // Add Keyframe if needed
         if (!document.getElementById('modal-anim')) {
             const s = document.createElement('style');
             s.id = 'modal-anim';
@@ -379,43 +411,35 @@
             document.head.appendChild(s);
         }
 
-        // Helpers
         const close = () => {
             overlay.style.opacity = '0';
             setTimeout(() => overlay.remove(), 200);
         };
 
-        // Attach Listeners
         const btnReplay = document.getElementById(`btn-replay-${notif.id}`);
         const btnAck = document.getElementById(`btn-ack-${notif.id}`);
 
         btnReplay.onclick = () => {
-            // Replay confetti
             if (window.triggerConfetti) {
                 window.triggerConfetti({ coins: countFn ? countFn() : 0 });
             }
-            // Button effect
             btnReplay.style.transform = 'scale(0.95)';
             setTimeout(() => btnReplay.style.transform = 'scale(1)', 100);
         };
 
         btnAck.onclick = () => {
-            // Batch Acknowledge: Find all COMPLETED_MODAL notifications for this project
-            // and acknowledge them all to prevent "double popups"
+            const { email } = getUser_();
+
             const projectNum = notif.projectNumber;
-            const related = STATE.history.filter(n => n.type === 'COMPLETED_MODAL' && n.projectNumber === projectNum && (!n.readBy || !n.readBy.includes(window.currentUser?.email)));
+            const related = STATE.history.filter(n => n.type === 'COMPLETED_MODAL' && n.projectNumber === projectNum && (!n.readBy || !n.readBy.includes(email)));
 
             related.forEach(n => Notif.acknowledgeToast(n.id));
-
-            // Fallback: Ensure current one is acked if not found in list (e.g. race)
             Notif.acknowledgeToast(notif.id);
 
-            // SUPPRESS further popups for this SPECIFIC status change for 60 seconds
             const suppressionKey = `${projectNum}:${norm(notif.status)}`;
             STATE.suppressedProjects.add(suppressionKey);
             setTimeout(() => STATE.suppressedProjects.delete(suppressionKey), 60000);
 
-            // Manually close modal (Toast ack removes toast, but modal is separate DOM)
             close();
         };
     }
@@ -424,44 +448,25 @@
         const container = document.getElementById('toast-container');
         if (!container) return;
 
-        // Get current unread notifications
-        let unread = STATE.history.filter(item => !item.readBy?.includes(window.currentUser?.email));
+        const { email } = getUser_();
+        let unread = STATE.history.filter(item => !item.readBy?.includes(email));
 
-        // FILTER: Only show toasts relevant to the current VIEW (ACTIVE_TAB)
-        // PM View: Show PM role notifications
-        // Designer View (Mine): Show Designer or Any role
         if (window.ACTIVE_TAB === 'pm') {
             unread = unread.filter(n => n.targetRole === 'PM');
         } else if (window.ACTIVE_TAB === 'mine') {
             unread = unread.filter(n => n.targetRole === 'DESIGNER' || n.targetRole === 'ANY' || !n.targetRole);
         }
-        // Ops view might show all? For now, let's respect the "respective tabs" rule strictly.
-        // If Ops is active, maybe show both? Or just PM? Stick to filtering for now.
 
-        // Remove toasts for notifications that no longer exist or have been read OR filtered out
         Array.from(container.children).forEach(toast => {
             const id = toast.id.replace('toast-', '');
-            // FIX: Don't remove toasts marked as 'persistent' UNLESS they are acknowledged (handled elsewhere)
-            // Actually, if we switch tabs, we SHOULD hide the toast if it's not relevant to this view?
-            // User said: "only show notification in their respective tabs".
-            // So yes, hide it.
-            // But 'persistent' confetti might be special. Confetti usually for Designer.
-            // Let's hide if not in 'unread' list (which is now filtered).
-
-            const isPersistent = toast.dataset.persistent === 'true';
             const stillRelevant = unread.find(n => n.id === id);
 
             if (!stillRelevant) {
-                // If persistent, maybe we shouldn't kill it just because we switched tabs?
-                // But user wants segregation.
-                // "if the notitification is related to the designer view tab, then it should show in that tab."
-                // So we remove it.
                 toast.style.animation = 'slideOut 0.3s ease-out';
                 setTimeout(() => toast.remove(), 300);
             }
         });
 
-        // Add toasts for unread that don't have a toast yet
         unread.forEach(notif => {
             if (!document.getElementById('toast-' + notif.id)) {
                 showImmediateNotification(notif);
@@ -470,37 +475,31 @@
     }
 
     async function acknowledgeToast(id) {
-        // Immediately remove toast from DOM (instant feedback)
         const toast = document.getElementById('toast-' + id);
-        if (toast) {
-            toast.remove();
-        }
+        if (toast) toast.remove();
 
-        // Optimistically update local state to prevent reappearing
+        const { email } = getUser_();
         const notif = STATE.history.find(n => n.id === id);
-        if (notif && window.currentUser) {
+        if (notif && email) {
             if (!notif.readBy) notif.readBy = [];
-            if (!notif.readBy.includes(window.currentUser.email)) {
-                notif.readBy.push(window.currentUser.email);
+            if (!notif.readBy.includes(email)) {
+                notif.readBy.push(email);
             }
         }
 
-        // Update server in background
         await markAsRead(id);
 
-        // Update UI to reflect acknowledged state
         renderInbox();
         updateFabCount();
+        updateBadges();
     }
 
     function viewProject(projectNumber, notifId) {
         console.log('[Notif] Looking for project:', projectNumber);
 
-        // Try to find card directly by searching all cards for matching project number
         const allCards = document.querySelectorAll('[id^="card-"]');
         let targetCard = null;
 
-        // Method 1: Search through global data arrays
         const dataSources = [
             { name: 'PM_ROWS', data: window.PM_ROWS },
             { name: 'MINE_ROWS', data: window.MINE_ROWS },
@@ -522,7 +521,6 @@
             }
         }
 
-        // Method 2: If not found, search DOM directly by iterating cards and checking content
         if (!targetCard) {
             console.log('[Notif] Trying DOM search method...');
             allCards.forEach(card => {
@@ -537,10 +535,8 @@
         if (targetCard) {
             console.log('[Notif] Scrolling to card:', targetCard.id);
 
-            // Scroll to card
             targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-            // Create gradient highlight overlay
             const highlightOverlay = document.createElement('div');
             highlightOverlay.style.cssText = `
                 position: absolute;
@@ -556,21 +552,17 @@
                 opacity: 1;
             `;
 
-            // Ensure card has position relative for absolute overlay
             const originalPosition = targetCard.style.position;
             targetCard.style.position = 'relative';
             targetCard.insertBefore(highlightOverlay, targetCard.firstChild);
 
-            // Add glow effect to card
             targetCard.style.transition = 'box-shadow 1s ease';
             targetCard.style.boxShadow = '0 0 30px rgba(102, 126, 234, 0.4)';
 
-            // After 2 seconds, smoothly fade out
             setTimeout(() => {
                 highlightOverlay.style.opacity = '0';
                 targetCard.style.boxShadow = '0 0 0 rgba(102, 126, 234, 0)';
 
-                // Clean up after fade completes
                 setTimeout(() => {
                     highlightOverlay.remove();
                     targetCard.style.position = originalPosition;
@@ -584,7 +576,6 @@
             alert('Could not find project #' + projectNumber + ' on this page. You may need to switch views or adjust filters.');
         }
     }
-
 
     // --- UI: PERSISTENT ALERTS (COMPLIANCE) ---
     function renderSticky(id, msg, isWarning, actions = []) {
@@ -634,13 +625,10 @@
     }
 
     // Main Check Function
-    // Main Check Function
     function checkCompliance(rows, mode) {
         if (!rows) return;
 
-        // 1. Designer Compliance: Must have exactly 10 cards prioritized 1-10
         if (mode === 'mine') {
-            // Define Archive / Inactive Statuses
             const ARCHIVE_STATUSES = [
                 'abandoned,expired',
                 'approved - construction phase',
@@ -651,10 +639,8 @@
 
             const normalize = (s) => String(s || '').toLowerCase().trim();
 
-            // Filter for ACTIVE projects only
             const activeRows = rows.filter(r => !ARCHIVE_STATUSES.includes(normalize(r.status)));
 
-            // Count unique priorities 1-10 assigned to this user WITHIN ACTIVE rows
             const prioritized = activeRows.filter(r => {
                 const val = (r.my && r.my.priority !== undefined && r.my.priority !== null) ? r.my.priority : r.priority;
                 const p = parseInt(val);
@@ -665,9 +651,6 @@
 
             console.log(`[Compliance] Active: ${totalActive}, Prioritized: ${count} (Total Raw: ${rows.length})`);
 
-            // Logic:
-            // If Active >= 10 -> Must have exactly 10 prioritized.
-            // If Active < 10  -> Must have exactly ALL prioritized.
             const target = totalActive >= 10 ? 10 : totalActive;
 
             if (count !== target) {
@@ -682,8 +665,6 @@
             }
         }
 
-        // 2. PM Compliance: Projects missing assignments (Only check if Mode is PM)
-        // 2. PM Compliance: Projects missing assignments (Only check if Mode is PM)
         if (mode === 'pm') {
             removeSticky('pm-compliance');
         }
@@ -691,7 +672,16 @@
 
     // --- EXPORTS ---
     window.Notif = {
-        init: () => {
+        init: (boot) => {
+            // Core calls Notif.init(BOOT). We keep compatibility and capture name for notifications.
+            STATE.boot = boot || STATE.boot || null;
+
+            if (boot && window.currentUser) {
+                if (!window.currentUser.name && boot.name) window.currentUser.name = boot.name;
+                // roles not needed here, but safe to keep if you later use them
+                if (!window.currentUser.roles && boot.roles) window.currentUser.roles = boot.roles;
+            }
+
             createInbox();
             createToastContainer();
             fetchNotifications();
