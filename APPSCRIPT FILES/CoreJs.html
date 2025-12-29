@@ -1361,7 +1361,6 @@ function buildAdminViewAsBar_() {
   if (tabs && tabs.parentNode) tabs.parentNode.insertBefore(bar, tabs);
   else document.body.insertBefore(bar, document.body.firstChild);
 }
-
 function initAdminViewAs_() {
   const cu = window.currentUser || {};
   if (!cu.isAdmin) return;
@@ -1375,24 +1374,51 @@ function initAdminViewAs_() {
   const btn = document.getElementById('adminViewAsReset');
   const hint = document.getElementById('adminViewAsHint');
 
+  function setImpersonateAndReload_(pickedEmailOrEmpty) {
+    const picked = (pickedEmailOrEmpty || '').toLowerCase().trim();
+
+    // ✅ Correct way in Apps Script web apps: update outer URL params, not iframe URL
+    if (window.google && google.script && google.script.url && google.script.history) {
+      google.script.url.getLocation(loc => {
+        // loc.parameter is what GAS provides (object of query params)
+        const existing = (loc && (loc.parameter || loc.parameters)) || {};
+        const next = {};
+
+        // Preserve existing params (like createOAuthDialog=true) to avoid weird redirects
+        Object.keys(existing).forEach(k => next[k] = existing[k]);
+
+        if (picked && picked !== actor) next.impersonate = picked;
+        else delete next.impersonate;
+
+        // Replace URL then reload
+        google.script.history.replace({}, next, (loc && loc.hash) ? loc.hash : '');
+        window.location.reload();
+      });
+      return;
+    }
+
+    // Fallback (non-GAS environments)
+    const u = new URL(window.location.href);
+    if (picked && picked !== actor) u.searchParams.set('impersonate', picked);
+    else u.searchParams.delete('impersonate');
+    window.location.href = u.toString();
+  }
+
   if (hint) {
     hint.textContent = (target !== actor)
       ? `Viewing as ${target} (you: ${actor})`
       : `You: ${actor}`;
   }
 
-  // Populate dropdown from server
   gasCall('apiAdminListUsers')
     .then(users => {
       sel.innerHTML = '';
 
-      // Add "Me" option first
       const meOpt = document.createElement('option');
       meOpt.value = actor;
       meOpt.textContent = `Me (${actor})`;
       sel.appendChild(meOpt);
 
-      // Add everyone else
       (users || []).forEach(u => {
         const opt = document.createElement('option');
         opt.value = String(u.email || '').toLowerCase();
@@ -1408,21 +1434,9 @@ function initAdminViewAs_() {
       sel.value = target || actor;
     });
 
-  sel.onchange = () => {
-    const picked = String(sel.value || '').toLowerCase();
-    const u = new URL(window.location.href);
+  sel.onchange = () => setImpersonateAndReload_(sel.value);
 
-    if (picked && picked !== actor) u.searchParams.set('impersonate', picked);
-    else u.searchParams.delete('impersonate');
-
-    window.location.href = u.toString();
-  };
-
-  btn.onclick = () => {
-    const u = new URL(window.location.href);
-    u.searchParams.delete('impersonate');
-    window.location.href = u.toString();
-  };
+  btn.onclick = () => setImpersonateAndReload_('');
 }
 
 document.addEventListener('DOMContentLoaded', init);
