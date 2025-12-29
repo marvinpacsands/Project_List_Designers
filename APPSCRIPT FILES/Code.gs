@@ -63,8 +63,9 @@ function doGet(e) {
 
   // Only ADMIN can impersonate; everyone else stays as themselves
   const targetEmail = (actorIsAdmin && impEmail) ? impEmail : actorEmail;
-
+//////////
   const t = HtmlService.createTemplateFromFile('Index');
+  t.webAppUrl = ScriptApp.getService().getUrl();
 
   t.currentUserJson = JSON.stringify({
     email: targetEmail,

@@ -1361,6 +1361,7 @@ function buildAdminViewAsBar_() {
   if (tabs && tabs.parentNode) tabs.parentNode.insertBefore(bar, tabs);
   else document.body.insertBefore(bar, document.body.firstChild);
 }
+
 function initAdminViewAs_() {
   const cu = window.currentUser || {};
   if (!cu.isAdmin) return;
@@ -1374,34 +1375,31 @@ function initAdminViewAs_() {
   const btn = document.getElementById('adminViewAsReset');
   const hint = document.getElementById('adminViewAsHint');
 
-  function setImpersonateAndReload_(pickedEmailOrEmpty) {
-    const picked = (pickedEmailOrEmpty || '').toLowerCase().trim();
+  function goExec_(pickedEmailOrEmpty) {
+    const picked = String(pickedEmailOrEmpty || '').trim().toLowerCase();
 
-    // ✅ Correct way in Apps Script web apps: update outer URL params, not iframe URL
-    if (window.google && google.script && google.script.url && google.script.history) {
-      google.script.url.getLocation(loc => {
-        // loc.parameter is what GAS provides (object of query params)
-        const existing = (loc && (loc.parameter || loc.parameters)) || {};
-        const next = {};
-
-        // Preserve existing params (like createOAuthDialog=true) to avoid weird redirects
-        Object.keys(existing).forEach(k => next[k] = existing[k]);
-
-        if (picked && picked !== actor) next.impersonate = picked;
-        else delete next.impersonate;
-
-        // Replace URL then reload
-        google.script.history.replace({}, next, (loc && loc.hash) ? loc.hash : '');
-        window.location.reload();
-      });
+    const base = (window.WEBAPP_URL || '').trim(); // real /exec URL from server
+    if (!base) {
+      // fallback (should rarely happen)
+      const u = new URL(window.location.href);
+      u.searchParams.delete('impersonate');
+      if (picked && picked !== actor) u.searchParams.set('impersonate', picked);
+      window.location.href = u.toString();
       return;
     }
 
-    // Fallback (non-GAS environments)
-    const u = new URL(window.location.href);
+    const u = new URL(base);
+    u.searchParams.delete('impersonate');
     if (picked && picked !== actor) u.searchParams.set('impersonate', picked);
-    else u.searchParams.delete('impersonate');
-    window.location.href = u.toString();
+
+    // IMPORTANT: force top-level navigation (prevents white sandbox panel)
+    const nextUrl = u.toString();
+    try {
+      window.open(nextUrl, '_top');   // most reliable in GAS iframe
+    } catch (e) {
+      try { window.top.location.href = nextUrl; }
+      catch (e2) { window.location.href = nextUrl; }
+    }
   }
 
   if (hint) {
@@ -1434,10 +1432,10 @@ function initAdminViewAs_() {
       sel.value = target || actor;
     });
 
-  sel.onchange = () => setImpersonateAndReload_(sel.value);
-
-  btn.onclick = () => setImpersonateAndReload_('');
+  sel.onchange = () => goExec_(sel.value);
+  btn.onclick = () => goExec_('');
 }
+
 
 document.addEventListener('DOMContentLoaded', init);
 /* End Refactored core.js */

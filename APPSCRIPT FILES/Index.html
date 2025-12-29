@@ -943,6 +943,7 @@
   <?!= include('NotificationsCss'); ?>
   <script>
   window.currentUser = <?!= currentUserJson ?>;
+  window.WEBAPP_URL = <?!= JSON.stringify(webAppUrl) ?>;
   console.log('Logged in as:', window.currentUser);
 </script>
 
