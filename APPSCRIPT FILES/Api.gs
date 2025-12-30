@@ -1,5 +1,5 @@
 // Api.gs
-// this is api.gs file
+// 502
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -516,10 +516,9 @@ function apiProjects(params) {
     const projectName = row[map["Project"]];
     const status = row[map["Status"]];
 
-    // skip empty rows
     if (!projectNumber && !projectName && !status) continue;
 
-    const rowIndex = String(r + 1); // sheet row number as string (matches existing frontend expectations)
+    const rowIndex = String(r + 1);
 
     const team = buildTeamFromRow_(row, map, userIndex);
     const pmName = String(row[map["PM"]] || "");
@@ -537,21 +536,11 @@ function apiProjects(params) {
       pmName: pmName,
       pm: pm,
       team: team,
-      operational: {
-        user: operationalUser,
-        notes: operationalNotes
-      },
-      // Optional (used for sorting in a few places); safe if missing.
-      lastModified: {
-        dateDisplay: "",
-        dateMs: 0,
-        by: "",
-        display: ""
-      },
+      operational: { user: operationalUser, notes: operationalNotes },
+      lastModified: { dateDisplay: "", dateMs: 0, by: "", display: "" },
       missing: []
     };
 
-    // For Designer tab, the UI expects `my` (the current user's slot).
     if (mode === "mine") {
       const mySlot = team.find(t => slotMatchesUser_(t, user));
       base.my = mySlot
@@ -562,7 +551,6 @@ function apiProjects(params) {
     projects.push(base);
   }
 
-  // Build lists for filters
   const pmSet = new Set();
   const statusSet = new Set();
   let totalUnassigned = 0;
@@ -578,28 +566,39 @@ function apiProjects(params) {
     if (!pmName || normalize_(pmName) === "unassigned") totalUnassigned += 1;
   });
 
-  // Filter by mode
   let filtered = projects;
 
   if (mode === "mine") {
     filtered = projects.filter(p => (p.team || []).some(t => slotMatchesUser_(t, user)));
+
   } else if (mode === "pm") {
     const pmName = pmQuery || user.name;
-    filtered = projects.filter(p => {
-      const pPm = String(p.pmName || "").trim();
-      if (normalize_(pmName) === "unassigned") {
-        return !pPm || normalize_(pPm) === "unassigned";
-      }
-      if (includeUnassigned) {
-        return normalize_(pPm) === normalize_(pmName) || !pPm || normalize_(pPm) === "unassigned";
-      }
-      return normalize_(pPm) === normalize_(pmName);
-    });
+    const pmNorm = normalize_(pmName);
+    const isAllProjects = pmNorm.replace(/\s+/g, "") === "allprojects";
+
+    // ✅ FIX: "All Projects" means don't filter by PM at all.
+    if (isAllProjects) {
+      filtered = projects;
+    } else {
+      filtered = projects.filter(p => {
+        const pPm = String(p.pmName || "").trim();
+
+        if (normalize_(pmName) === "unassigned") {
+          return !pPm || normalize_(pPm) === "unassigned";
+        }
+
+        if (includeUnassigned) {
+          return normalize_(pPm) === normalize_(pmName) || !pPm || normalize_(pPm) === "unassigned";
+        }
+
+        return normalize_(pPm) === normalize_(pmName);
+      });
+    }
+
   } else if (mode === "ops") {
     filtered = projects;
   }
 
-  // Designer counts (simple, used for PM diagnostics)
   const designerCounts = {};
   filtered.forEach(p => {
     (p.team || []).forEach(t => {
@@ -617,8 +616,11 @@ function apiProjects(params) {
 
   if (mode === "pm") {
     const pmName = pmQuery || user.name;
+
     response.pmList = Array.from(pmSet).sort((a, b) => a.localeCompare(b));
     if (!response.pmList.includes("Unassigned")) response.pmList.unshift("Unassigned");
+    if (!response.pmList.includes("All Projects")) response.pmList.unshift("All Projects");
+
     response.statusList = Array.from(statusSet).sort((a, b) => a.localeCompare(b));
     response.totalUnassigned = totalUnassigned;
     response.designerCounts = designerCounts;
@@ -627,6 +629,7 @@ function apiProjects(params) {
 
   return response;
 }
+
 
 
 /**
