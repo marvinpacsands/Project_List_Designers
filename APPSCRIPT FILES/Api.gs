@@ -1,5 +1,5 @@
 // Api.gs
-// 502
+// 519
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -492,7 +492,6 @@ function apiBootstrap(email) {
  *     customSortOrder?: [...]
  *   }
  */
-
 function apiProjects(params) {
   const email = assertDomain_((params && params.email) || getMyEmail_());
   const mode = (params && params.mode) || "mine";
@@ -551,6 +550,7 @@ function apiProjects(params) {
     projects.push(base);
   }
 
+  // Build lists for filters
   const pmSet = new Set();
   const statusSet = new Set();
   let totalUnassigned = 0;
@@ -566,6 +566,7 @@ function apiProjects(params) {
     if (!pmName || normalize_(pmName) === "unassigned") totalUnassigned += 1;
   });
 
+  // Filter by mode
   let filtered = projects;
 
   if (mode === "mine") {
@@ -573,25 +574,29 @@ function apiProjects(params) {
 
   } else if (mode === "pm") {
     const pmName = pmQuery || user.name;
-    const pmNorm = normalize_(pmName);
-    const isAllProjects = pmNorm.replace(/\s+/g, "") === "allprojects";
+    const raw = String(pmName || "").trim();
+    const rawUpper = raw.toUpperCase();
 
-    // ✅ FIX: "All Projects" means don't filter by PM at all.
+    // ✅ FIX: PM UI uses "__ALL__" as the All Projects value.
+    const isAllProjects =
+      rawUpper === "__ALL__" ||
+      normalize_(raw).replace(/\s+/g, "") === "allprojects";
+
     if (isAllProjects) {
       filtered = projects;
     } else {
       filtered = projects.filter(p => {
         const pPm = String(p.pmName || "").trim();
 
-        if (normalize_(pmName) === "unassigned") {
+        if (normalize_(raw) === "unassigned") {
           return !pPm || normalize_(pPm) === "unassigned";
         }
 
         if (includeUnassigned) {
-          return normalize_(pPm) === normalize_(pmName) || !pPm || normalize_(pPm) === "unassigned";
+          return normalize_(pPm) === normalize_(raw) || !pPm || normalize_(pPm) === "unassigned";
         }
 
-        return normalize_(pPm) === normalize_(pmName);
+        return normalize_(pPm) === normalize_(raw);
       });
     }
 
@@ -599,6 +604,7 @@ function apiProjects(params) {
     filtered = projects;
   }
 
+  // Designer counts (used by PM UI)
   const designerCounts = {};
   filtered.forEach(p => {
     (p.team || []).forEach(t => {
@@ -617,9 +623,14 @@ function apiProjects(params) {
   if (mode === "pm") {
     const pmName = pmQuery || user.name;
 
-    response.pmList = Array.from(pmSet).sort((a, b) => a.localeCompare(b));
-    if (!response.pmList.includes("Unassigned")) response.pmList.unshift("Unassigned");
-    if (!response.pmList.includes("All Projects")) response.pmList.unshift("All Projects");
+    // ✅ IMPORTANT: Do NOT inject "All Projects" here.
+    // The PM frontend already creates the All Projects option with value "__ALL__".
+    // We only ensure "__ALL__" exists in pmList for parity with local behavior.
+    const list = Array.from(pmSet)
+      .filter(v => v && String(v).trim() !== "__ALL__")
+      .sort((a, b) => a.localeCompare(b));
+
+    response.pmList = ["__ALL__", ...list];
 
     response.statusList = Array.from(statusSet).sort((a, b) => a.localeCompare(b));
     response.totalUnassigned = totalUnassigned;
