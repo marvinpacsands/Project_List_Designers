@@ -15,6 +15,75 @@
 /* =========================
    Helpers
 ========================= */
+function looksLikeEmail_(v) {
+  const s = String(v == null ? "" : v).trim();
+  // Simple check: enough to tell an email from a name.
+  return s.includes("@") && s.includes(".");
+}
+
+function buildUserIndex_() {
+  const users = getAllUsers_();
+  const byEmail = {};
+  const byName = {};
+  users.forEach(u => {
+    const em = normalize_(u.email);
+    const nm = normalize_(u.name);
+    if (em) byEmail[em] = u;
+    // Keep first match for a name to avoid random overwrites if names collide.
+    if (nm && !byName[nm]) byName[nm] = u;
+  });
+  return { byEmail, byName };
+}
+
+function resolveEmailFromDesignerValue_(designerValue, userIndex) {
+  const raw = String(designerValue == null ? "" : designerValue).trim();
+  if (!raw) return "";
+
+  // If the cell itself is an email, use it.
+  if (looksLikeEmail_(raw)) return raw;
+
+  // Otherwise try to map name -> email using "Designer Emails".
+  const u = userIndex && userIndex.byName ? userIndex.byName[normalize_(raw)] : null;
+  return u ? String(u.email || "").trim() : "";
+}
+
+function slotMatchesUser_(teamMember, user) {
+  if (!teamMember) return false;
+
+  const userEmail = normalize_(user.email);
+  const userName = normalize_(user.name);
+
+  const memberEmail = normalize_(teamMember.email);
+  if (memberEmail && userEmail && memberEmail === userEmail) return true;
+
+  const memberName = normalize_(teamMember.name);
+
+  // Fallbacks (keeps behavior close to your local version):
+  // - exact name match
+  // - cell contains the user's email
+  // - cell contains the user's name (covers extra text like "Marvin Qaqos (Lead)")
+  if (memberName && userName && memberName === userName) return true;
+  if (memberName && userEmail && memberName === userEmail) return true;
+  if (memberName && userName && memberName.includes(userName)) return true;
+
+  return false;
+}
+
+function setDesignerSlot_(row, map, slot, designerValue, userIndex) {
+  const nameHeader = `DESIGNER${slot}`;
+  const emailHeader = `Email - DESIGNER${slot}`;
+
+  // Keep display value exactly what the UI expects
+  row[map[nameHeader]] = designerValue;
+
+  // Keep email identity synced so renames in "Designer Emails" don't break ownership.
+  if (map[emailHeader] !== undefined) {
+    const v = String(designerValue == null ? "" : designerValue).trim();
+    const email = v ? resolveEmailFromDesignerValue_(v, userIndex) : "";
+    row[map[emailHeader]] = email;
+  }
+}
+
 function apiAdminListUsers() {
   const actorEmail = getSessionEmail_();
   if (!isAdminEmail_(actorEmail)) throw new Error('Not authorized');
@@ -209,9 +278,18 @@ function getProjectsSheetMap_() {
     "PM to Set Priority",
     "PM notes",
     "Operational notes",
+
+    // Designer display names (what the UI shows)
     "DESIGNER1",
     "DESIGNER2",
     "DESIGNER3",
+
+    // Stable identity (internal use): keeps designer ownership working even if you rename people in "Designer Emails"
+    "Email - DESIGNER1",
+    "Email - DESIGNER2",
+    "Email - DESIGNER3",
+
+    // Designer fields
     "Prioraty - DESIGNER1",
     "Prioraty - DESIGNER2",
     "Prioraty - DESIGNER3",
@@ -221,6 +299,8 @@ function getProjectsSheetMap_() {
     "Date - DESIGNER1",
     "Date - DESIGNER2",
     "Date - DESIGNER3",
+
+    // PM + ops timestamps
     "Date - PM to Set Priority",
     "Date - PM notes",
     "Date - Operational"
@@ -229,13 +309,21 @@ function getProjectsSheetMap_() {
   return { sh, map };
 }
 
-function buildTeamFromRow_(row, map) {
+function buildTeamFromRow_(row, map, userIndex) {
   const team = [];
+
   const dNames = [
     row[map["DESIGNER1"]],
     row[map["DESIGNER2"]],
     row[map["DESIGNER3"]]
   ];
+
+  const dEmails = [
+    map["Email - DESIGNER1"] !== undefined ? row[map["Email - DESIGNER1"]] : "",
+    map["Email - DESIGNER2"] !== undefined ? row[map["Email - DESIGNER2"]] : "",
+    map["Email - DESIGNER3"] !== undefined ? row[map["Email - DESIGNER3"]] : ""
+  ];
+
   const prios = [
     row[map["Prioraty - DESIGNER1"]],
     row[map["Prioraty - DESIGNER2"]],
@@ -253,16 +341,29 @@ function buildTeamFromRow_(row, map) {
   ];
 
   for (let i = 0; i < 3; i++) {
+    const rawName = String(dNames[i] || "");
+    let email = String(dEmails[i] || "").trim();
+
+    // If email column is empty, infer from the name cell (email typed) or from "Designer Emails".
+    if (!email) {
+      email = resolveEmailFromDesignerValue_(rawName, userIndex);
+    }
+
     team.push({
       slot: i + 1,
-      name: String(dNames[i] || ""),
+      // Keep UI display exactly as stored in the sheet
+      name: rawName,
+      // Stable identity used for matching
+      email: email,
       priority: String(prios[i] == null ? "" : prios[i]),
       notes: String(notes[i] || ""),
       dateDisplay: fmtDate_(dates[i])
     });
   }
+
   return team;
 }
+
 
 function buildPMFieldsFromRow_(row, map) {
   return {
@@ -391,6 +492,7 @@ function apiBootstrap(email) {
  *     customSortOrder?: [...]
  *   }
  */
+
 function apiProjects(params) {
   const email = assertDomain_((params && params.email) || getMyEmail_());
   const mode = (params && params.mode) || "mine";
@@ -401,6 +503,8 @@ function apiProjects(params) {
   if (!user) throw new Error("Access denied (user not found in Designer Emails).");
 
   const allUsers = getAllUsers_();
+  const userIndex = buildUserIndex_();
+
   const { sh, map } = getProjectsSheetMap_();
   const values = sh.getDataRange().getValues();
 
@@ -417,7 +521,7 @@ function apiProjects(params) {
 
     const rowIndex = String(r + 1); // sheet row number as string (matches existing frontend expectations)
 
-    const team = buildTeamFromRow_(row, map);
+    const team = buildTeamFromRow_(row, map, userIndex);
     const pmName = String(row[map["PM"]] || "");
     const pm = buildPMFieldsFromRow_(row, map);
 
@@ -449,7 +553,7 @@ function apiProjects(params) {
 
     // For Designer tab, the UI expects `my` (the current user's slot).
     if (mode === "mine") {
-      const mySlot = team.find(t => normalize_(t.name) === normalize_(user.name));
+      const mySlot = team.find(t => slotMatchesUser_(t, user));
       base.my = mySlot
         ? { slot: mySlot.slot, priority: mySlot.priority, notes: mySlot.notes, dateDisplay: mySlot.dateDisplay }
         : { slot: null, priority: "", notes: "", dateDisplay: "" };
@@ -478,10 +582,7 @@ function apiProjects(params) {
   let filtered = projects;
 
   if (mode === "mine") {
-    filtered = projects.filter(p => {
-      const names = (p.team || []).map(t => normalize_(t.name));
-      return names.includes(normalize_(user.name));
-    });
+    filtered = projects.filter(p => (p.team || []).some(t => slotMatchesUser_(t, user)));
   } else if (mode === "pm") {
     const pmName = pmQuery || user.name;
     filtered = projects.filter(p => {
@@ -527,6 +628,7 @@ function apiProjects(params) {
   return response;
 }
 
+
 /**
  * Mirrors your old /api/update body:
  * {
@@ -535,6 +637,7 @@ function apiProjects(params) {
  *   payload: { rowIndex, ... }
  * }
  */
+
 function apiUpdate(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -548,6 +651,7 @@ function apiUpdate(body) {
     if (!user) throw new Error("Access denied (user not found in Designer Emails).");
 
     const { sh, map } = getProjectsSheetMap_();
+    const userIndex = buildUserIndex_();
 
     const rowIndex = Number(payload.rowIndex);
     if (!rowIndex || rowIndex < 2) throw new Error("Invalid rowIndex.");
@@ -556,21 +660,15 @@ function apiUpdate(body) {
     const rowRange = sh.getRange(rowIndex, 1, 1, sh.getLastColumn());
     const row = rowRange.getValues()[0];
 
-    const team = buildTeamFromRow_(row, map);
-
-    const d1Name = normalize_(team[0].name);
-    const d2Name = normalize_(team[1].name);
-    const d3Name = normalize_(team[2].name);
-    const meName = normalize_(user.name);
-
+    const team = buildTeamFromRow_(row, map, userIndex);
     const nowDate = now_();
 
     // --- MODE: mine (designer edits their priority/notes for their assigned slot)
     if (mode === "mine") {
       const mySlot =
-        (d1Name === meName && 1) ||
-        (d2Name === meName && 2) ||
-        (d3Name === meName && 3) ||
+        (slotMatchesUser_(team[0], user) && 1) ||
+        (slotMatchesUser_(team[1], user) && 2) ||
+        (slotMatchesUser_(team[2], user) && 3) ||
         null;
 
       if (!mySlot) {
@@ -582,16 +680,28 @@ function apiUpdate(body) {
       const notesHeader = `Notes - DESIGNER${mySlot}`;
       const dateHeader = `Date - DESIGNER${mySlot}`;
 
-      if (payload.priority !== undefined) row[map[prioHeader]] = payload.priority;
-      if (payload.notes !== undefined) row[map[notesHeader]] = payload.notes;
-      row[map[dateHeader]] = nowDate;
+      if (payload.priority !== undefined) {
+        row[map[prioHeader]] = payload.priority;
+        row[map[dateHeader]] = nowDate;
+      }
+
+      if (payload.notes !== undefined) {
+        row[map[notesHeader]] = payload.notes;
+        row[map[dateHeader]] = nowDate;
+      }
 
       rowRange.setValues([row]);
       return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
     }
 
-    // --- MODE: pm (PM edits assignments + PM notes)
+    // --- MODE: pm (PM edits PM priority/notes + designer assignments)
     if (mode === "pm") {
+      // PM priority
+      if (payload.pmPriority !== undefined) {
+        row[map["PM to Set Priority"]] = payload.pmPriority;
+        row[map["Date - PM to Set Priority"]] = nowDate;
+      }
+
       // PM notes
       if (payload.pmNotes !== undefined) {
         row[map["PM notes"]] = payload.pmNotes;
@@ -621,7 +731,7 @@ function apiUpdate(body) {
             row[map[nHeader]] = "";
             row[map[dtHeader]] = "";
           }
-          row[map[dHeader]] = newDesigner;
+          setDesignerSlot_(row, map, slot, newDesigner, userIndex);
         }
 
         if (newPrio !== undefined) {
@@ -639,9 +749,8 @@ function apiUpdate(body) {
       if (payload.pmName !== undefined) row[map["PM"]] = payload.pmName;
 
       for (let slot = 1; slot <= 3; slot++) {
-        const dHeader = `DESIGNER${slot}`;
         const newDesigner = payload[`designer${slot}`];
-        if (newDesigner !== undefined) row[map[dHeader]] = newDesigner;
+        if (newDesigner !== undefined) setDesignerSlot_(row, map, slot, newDesigner, userIndex);
       }
 
       if (payload.operationalNotes !== undefined) {
@@ -658,6 +767,8 @@ function apiUpdate(body) {
     lock.releaseLock();
   }
 }
+
+
 
 function apiSaveCustomOrder(body) {
   const lock = LockService.getScriptLock();
