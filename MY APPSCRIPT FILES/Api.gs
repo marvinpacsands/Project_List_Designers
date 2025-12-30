@@ -4,7 +4,7 @@
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
 //
-// Public functions the frontend will call (via google.script.run wrapper in Step 6):
+// Public  functions the frontend will call (via google.script.run wrapper in Step 6):
 //   - apiBootstrap(email)
 //   - apiProjects(params)
 //   - apiUpdate({ email, mode, payload })
