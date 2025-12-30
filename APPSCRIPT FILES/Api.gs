@@ -1,5 +1,5 @@
 // Api.gs
-// 756
+// 816
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -445,9 +445,14 @@ function hlProj_(t) {
 
 function projectSnapshotFromRow_(row, map) {
   const get = (h) => (h in map ? row[map[h]] : "");
+
+  // Support both naming styles, but your sheet uses "Project #" and "Project"
+  const projectNumber = String(get("Project #") || get("Project Number") || "");
+  const projectName = String(get("Project") || get("Project Name") || "");
+
   return {
-    projectNumber: String(get("Project Number") || ""),
-    projectName: String(get("Project Name") || ""),
+    projectNumber,
+    projectName,
     status: String(get("Status") || ""),
     pm: String(get("PM") || ""),
     pmNotes: String(get("PM notes") || ""),
@@ -459,6 +464,8 @@ function projectSnapshotFromRow_(row, map) {
     priority3: String(get("Prioraty - DESIGNER3") || "")
   };
 }
+
+
 
 function generateNotificationsForPMUpdate_(op, np, editorName) {
   const notifs = [];

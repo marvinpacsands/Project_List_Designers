@@ -1,4 +1,5 @@
 <script>
+    //816
 (() => {
     const STATE = {
         boot: null,
@@ -53,27 +54,49 @@
 
     // --- API (GAS + local fallback) ---
     async function apiGetNotifications_(email, name) {
-        // Apps Script mode
-        if (window.google && google.script && google.script.run && typeof gasCall === 'function') {
-            return gasCall('apiGetNotifications', { email, name });
-        }
-        // Local/Express fallback
-        const res = await fetch(`/api/notifications?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`);
-        return res.json();
+  // Apps Script mode (works even if gasCall is not defined)
+  if (window.google && google.script && google.script.run) {
+    if (typeof gasCall === 'function') {
+      return gasCall('apiGetNotifications', { email, name });
     }
+    return await new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject)
+        .apiGetNotifications({ email, name });
+    });
+  }
+
+  // Local/Express fallback
+  const res = await fetch(`/api/notifications?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`);
+  return res.json();
+}
+
+  
+
 
     async function apiAckNotification_(id, email) {
-        // Apps Script mode
-        if (window.google && google.script && google.script.run && typeof gasCall === 'function') {
-            return gasCall('apiAckNotification', { id, email });
-        }
-        // Local/Express fallback
-        return fetch('/api/notifications/ack', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, email })
-        });
+  // Apps Script mode (works even if gasCall is not defined)
+  if (window.google && google.script && google.script.run) {
+    if (typeof gasCall === 'function') {
+      return gasCall('apiAckNotification', { id, email });
     }
+    return await new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject)
+        .apiAckNotification({ id, email });
+    });
+  }
+
+  // Local/Express fallback
+  return fetch('/api/notifications/ack', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, email })
+  });
+}
+
 
     async function fetchNotifications() {
         const { email, name } = getUser_();
