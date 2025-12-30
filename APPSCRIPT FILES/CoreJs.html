@@ -1,4 +1,4 @@
-// 734
+// 1026
 <script>
 /* ================= GLOBALS & STATE ================= */
 let BOOT = null;
@@ -625,7 +625,14 @@ function init() {
         document.addEventListener('click', () => Notif.requestPermission(), { once: true });
       }
       document.getElementById('whoami').textContent = `${b.name} (${(b.roles || []).join(', ')})`;
-      if (b.logoUrl && b.logoUrl !== 'undefined') document.getElementById('logoImg').src = b.logoUrl;
+      const DEFAULT_LOGO_URL = 'https://raw.githubusercontent.com/marvinpacsands/Project_List_Designers/625a0afc3efb3baeee1e7750765b5e8a1881393c/logo.png';
+
+      const logoEl = document.getElementById('logoImg');
+      if (logoEl) {
+        const picked = (b && b.logoUrl && String(b.logoUrl) !== 'undefined') ? b.logoUrl : DEFAULT_LOGO_URL;
+        if (picked) logoEl.src = picked;
+      }
+
 
       const roles = (b.roles || []).map(r => r.toUpperCase());
       const hasPM = roles.includes('PM');
