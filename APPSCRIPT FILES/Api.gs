@@ -1,5 +1,5 @@
 // Api.gs
-// 635
+// 756
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -428,6 +428,297 @@ function setCustomSortOrder_(email, name, role, pmName, orderedRowIndexes) {
 
   return { success: true };
 }
+function isUnassigned_(v) {
+  const n = normalize_(v);
+  return !n || n === "unassigned";
+}
+
+function hlUser_(t) {
+  const s = String(t || "");
+  return `<strong style="color:#fff;background:#475569;padding:0 4px;border-radius:4px;font-size:12px;display:inline-block;">${s}</strong>`;
+}
+
+function hlProj_(t) {
+  const s = String(t || "");
+  return `<strong style="color:#fff;background:#0f172a;padding:0 4px;border-radius:4px;font-size:12px;display:inline-block;">${s}</strong>`;
+}
+
+function projectSnapshotFromRow_(row, map) {
+  const get = (h) => (h in map ? row[map[h]] : "");
+  return {
+    projectNumber: String(get("Project Number") || ""),
+    projectName: String(get("Project Name") || ""),
+    status: String(get("Status") || ""),
+    pm: String(get("PM") || ""),
+    pmNotes: String(get("PM notes") || ""),
+    designer1: String(get("DESIGNER1") || ""),
+    designer2: String(get("DESIGNER2") || ""),
+    designer3: String(get("DESIGNER3") || ""),
+    priority1: String(get("Prioraty - DESIGNER1") || ""),
+    priority2: String(get("Prioraty - DESIGNER2") || ""),
+    priority3: String(get("Prioraty - DESIGNER3") || "")
+  };
+}
+
+function generateNotificationsForPMUpdate_(op, np, editorName) {
+  const notifs = [];
+  const isTop3 = (v) => ["1", "2", "3"].includes(String(v || "").trim());
+  const slots = [1, 2, 3];
+
+  // 1) Assignment changes + teammate alert on replacement
+  slots.forEach((slot) => {
+    const oldDisp = String(op[`designer${slot}`] || "").trim();
+    const newDisp = String(np[`designer${slot}`] || "").trim();
+    const oldN = normalize_(oldDisp);
+    const newN = normalize_(newDisp);
+
+    // Added
+    if (isUnassigned_(oldN) && !isUnassigned_(newN)) {
+      notifs.push({
+        targetRole: "DESIGNER",
+        targetName: newDisp,
+        title: "New Assignment",
+        body: `You have been assigned to ${hlProj_(np.projectName)} by ${hlUser_(editorName)}. Please prioritize this project.`,
+        projectNumber: np.projectNumber
+      });
+    }
+
+    // Removed
+    if (!isUnassigned_(oldN) && isUnassigned_(newN)) {
+      notifs.push({
+        targetRole: "DESIGNER",
+        targetName: oldDisp,
+        title: "Assignment Removed",
+        body: `You have been removed from ${hlProj_(np.projectName)} by ${hlUser_(editorName)}.`,
+        projectNumber: np.projectNumber,
+        hideViewButton: true
+      });
+    }
+
+    // Replaced
+    if (!isUnassigned_(oldN) && !isUnassigned_(newN) && oldN !== newN) {
+      notifs.push({
+        targetRole: "DESIGNER",
+        targetName: oldDisp,
+        title: "Assignment Changed",
+        body: `You have been replaced on ${hlProj_(np.projectName)} by ${hlUser_(newDisp)}.`,
+        projectNumber: np.projectNumber,
+        hideViewButton: true
+      });
+
+      notifs.push({
+        targetRole: "DESIGNER",
+        targetName: newDisp,
+        title: "New Assignment",
+        body: `You have been assigned to replace ${hlUser_(oldDisp)} on ${hlProj_(np.projectName)}. Please prioritize this project.`,
+        projectNumber: np.projectNumber
+      });
+
+      // Teammate alert only if teammate has this project in Top 3
+      slots.forEach((mateNum) => {
+        if (mateNum === slot) return;
+        const mateName = String(np[`designer${mateNum}`] || "").trim();
+        const mateN = normalize_(mateName);
+        const matePrio = String(np[`priority${mateNum}`] || "").trim();
+
+        if (!isUnassigned_(mateN) && isTop3(matePrio)) {
+          notifs.push({
+            targetRole: "DESIGNER",
+            targetName: mateName,
+            title: "Team Update",
+            body: `${hlUser_(oldDisp)} was replaced by ${hlUser_(newDisp)} on ${hlProj_(np.projectName)}`,
+            projectNumber: np.projectNumber
+          });
+        }
+      });
+    }
+  });
+
+  // 2) PM Notes -> notify assigned designers
+  if (normalize_(op.pmNotes) !== normalize_(np.pmNotes)) {
+    slots.forEach((slot) => {
+      const d = String(np[`designer${slot}`] || "").trim();
+      if (!isUnassigned_(normalize_(d))) {
+        const txt = String(np.pmNotes || "");
+        const shortNotes = txt.substring(0, 60) + (txt.length > 60 ? "..." : "");
+        notifs.push({
+          targetRole: "DESIGNER",
+          targetName: d,
+          title: "PM Note Update",
+          body: `${hlProj_(np.projectName)}<br>PM updated notes: "${shortNotes}"`,
+          projectNumber: np.projectNumber
+        });
+      }
+    });
+  }
+
+  // 3) PM changes designer priority (designer must be same person as before)
+  slots.forEach((slot) => {
+    const oldPrio = String(op[`priority${slot}`] || "").trim();
+    const newPrio = String(np[`priority${slot}`] || "").trim();
+    const designerName = String(np[`designer${slot}`] || "").trim();
+    const oldDesignerNorm = normalize_(String(op[`designer${slot}`] || ""));
+
+    if (oldPrio !== newPrio && designerName && !isUnassigned_(normalize_(designerName))) {
+      if (normalize_(designerName) !== oldDesignerNorm) return; // assignment notif covers it
+
+      notifs.push({
+        targetRole: "DESIGNER",
+        targetName: designerName,
+        title: "Priority Changed by PM",
+        body: `${hlProj_(np.projectName)}<br>Priority: <strong>${oldPrio || "None"} → ${newPrio || "None"}</strong><br><span style="opacity:0.8">Changed by ${hlUser_(editorName)}</span>`,
+        projectNumber: np.projectNumber
+      });
+    }
+  });
+
+  // 4) PM assignment changes -> notify assigned designers
+  if (normalize_(op.pm) !== normalize_(np.pm)) {
+    const oldPM = op.pm || "Unassigned";
+    const newPM = np.pm || "Unassigned";
+
+    let message = "";
+    if (isUnassigned_(oldPM)) {
+      message = `${hlProj_(np.projectName)}<br>PM assigned: ${hlUser_(newPM)}`;
+    } else if (isUnassigned_(newPM)) {
+      message = `${hlProj_(np.projectName)}<br>PM removed: ${hlUser_(oldPM)}`;
+    } else {
+      message = `${hlProj_(np.projectName)}<br>PM changed: ${hlUser_(oldPM)} → ${hlUser_(newPM)}`;
+    }
+
+    slots.forEach((slot) => {
+      const d = String(np[`designer${slot}`] || "").trim();
+      if (!isUnassigned_(normalize_(d))) {
+        notifs.push({
+          targetRole: "DESIGNER",
+          targetName: d,
+          title: "Project Manager Updated",
+          body: message,
+          projectNumber: np.projectNumber
+        });
+      }
+    });
+  }
+
+  return notifs;
+}
+
+function generateNotificationsForMineUpdate_(op, np, editorName, mySlot) {
+  const notifs = [];
+  const isTop3 = (v) => ["1", "2", "3"].includes(String(v || "").trim());
+
+  const oldPrio = String(op[`priority${mySlot}`] || "").trim();
+  const newPrio = String(np[`priority${mySlot}`] || "").trim();
+  if (oldPrio === newPrio) return notifs;
+
+  // Match local: only notify when the change touches Top 3
+  if (!(isTop3(oldPrio) || isTop3(newPrio))) return notifs;
+
+  const proj = hlProj_(np.projectName);
+
+  // Notify PM
+  if (np.pm && !isUnassigned_(normalize_(np.pm))) {
+    notifs.push({
+      targetRole: "PM",
+      targetName: np.pm,
+      title: "Designer Priority Change",
+      body: `${hlUser_(editorName)} updated ${proj}<br>Priority: <strong>${oldPrio || "None"} → ${newPrio || "None"}</strong>`,
+      projectNumber: np.projectNumber
+    });
+  }
+
+  // Notify teammates who also have this project in their Top 3
+  [1, 2, 3].forEach((slot) => {
+    if (slot === mySlot) return;
+    const otherDesigner = String(np[`designer${slot}`] || "").trim();
+    const otherPrio = String(np[`priority${slot}`] || "").trim();
+    if (!isUnassigned_(normalize_(otherDesigner)) && isTop3(otherPrio)) {
+      notifs.push({
+        targetRole: "DESIGNER",
+        targetName: otherDesigner,
+        title: "Shared Project Update",
+        body: `${hlUser_(editorName)} updated ${proj}<br><span style="font-size:11px;color:#fff;opacity:0.85;">This project is also in your Top 3</span>`,
+        projectNumber: np.projectNumber
+      });
+    }
+  });
+
+  // If a PM changed the designer's priority via remote shift (still Top3-triggered)
+  const affectedDesigner = String(np[`designer${mySlot}`] || "").trim();
+  if (affectedDesigner && normalize_(affectedDesigner) !== normalize_(editorName)) {
+    notifs.push({
+      targetRole: "DESIGNER",
+      targetName: affectedDesigner,
+      title: "PM Priority Change",
+      body: `${hlUser_(editorName)} set your priority on ${proj} to <strong>${newPrio || "None"}</strong>`,
+      projectNumber: np.projectNumber
+    });
+  }
+
+  return notifs;
+}
+
+function appendNotifications_(notifs, actorName) {
+  const list = Array.isArray(notifs) ? notifs : [];
+  if (!list.length) return [];
+
+  const { sh, map } = getNotificationsSheetMap_();
+  const lastCol = sh.getLastColumn();
+  const base = Date.now();
+
+  const rows = [];
+  const appended = [];
+
+  list.forEach((n, i) => {
+    if (!n) return;
+
+    const targetName = String(n.targetName || "").trim();
+    if (normalize_(targetName) === normalize_(actorName)) return; // no self-notifs
+
+    const createdAt = base + i;
+    const id = Utilities.getUuid();
+
+    const row = new Array(lastCol).fill("");
+    row[map["id"]] = id;
+    row[map["createdAt"]] = createdAt;
+    row[map["readByJson"]] = JSON.stringify([]);
+    row[map["targetRole"]] = String(n.targetRole || "ANY");
+    row[map["targetName"]] = targetName;
+    row[map["title"]] = String(n.title || "");
+    row[map["body"]] = String(n.body || "");
+    row[map["projectNumber"]] = String(n.projectNumber || "");
+
+    row[map["type"]] = String(n.type || "");
+    row[map["projectName"]] = String(n.projectName || "");
+    row[map["status"]] = String(n.status || "");
+    row[map["teamJson"]] = JSON.stringify(n.team || []);
+    row[map["hideViewButton"]] = n.hideViewButton ? "true" : "";
+
+    rows.push(row);
+
+    // Returned to the frontend (for optional Firebase push)
+    appended.push({
+      id,
+      createdAt,
+      readBy: [],
+      targetRole: String(n.targetRole || "ANY"),
+      targetName,
+      title: String(n.title || ""),
+      body: String(n.body || ""),
+      projectNumber: String(n.projectNumber || ""),
+      type: String(n.type || ""),
+      projectName: String(n.projectName || ""),
+      status: String(n.status || ""),
+      team: Array.isArray(n.team) ? n.team : [],
+      hideViewButton: !!n.hideViewButton
+    });
+  });
+
+  if (!rows.length) return [];
+
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, lastCol).setValues(rows);
+  return appended;
+}
 
 /* =========================
    Public API
@@ -691,21 +982,29 @@ function apiUpdate(body) {
     const user = getUserByEmail_(email);
     if (!user) throw new Error("Access denied (user not found in Designer Emails).");
 
+    // Who should be credited as the editor (used only for notification text)?
+    const actorEmailRaw = payload && payload.realActorEmail;
+    const actorEmail = looksLikeEmail_(actorEmailRaw) ? assertDomain_(actorEmailRaw) : email;
+    const actorUser = getUserByEmail_(actorEmail) || user;
+    const actorName = String(actorUser.name || actorEmail || "Unknown");
+
     const { sh, map } = getProjectsSheetMap_();
     const userIndex = buildUserIndex_();
 
     const rowIndex = Number(payload.rowIndex);
-    if (!rowIndex || rowIndex < 2) throw new Error("Invalid rowIndex.");
+    if (!rowIndex) throw new Error("Missing rowIndex.");
 
-    // Read current row to detect designer slot, and to avoid overwriting unrelated columns.
     const rowRange = sh.getRange(rowIndex, 1, 1, sh.getLastColumn());
     const row = rowRange.getValues()[0];
 
-    const team = buildTeamFromRow_(row, map, userIndex);
+    // Snapshot BEFORE changes (for notification rules)
+    const oldSnap = projectSnapshotFromRow_(row.slice(), map);
+
     const nowDate = now_();
 
-    // --- MODE: mine (designer edits their priority/notes for their assigned slot)
+    // --- MODE: mine (designer edits their own priority/notes)
     if (mode === "mine") {
+      const team = buildTeamFromRow_(row, map, userIndex);
       const mySlot =
         (slotMatchesUser_(team[0], user) && 1) ||
         (slotMatchesUser_(team[1], user) && 2) ||
@@ -732,17 +1031,22 @@ function apiUpdate(body) {
       }
 
       rowRange.setValues([row]);
-      return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
-    }
 
-    // --- MODE: pm (PM edits PM priority/notes + designer assignments)
-    if (mode === "pm") {
-      // PM priority
-      if (payload.pmPriority !== undefined) {
-        row[map["PM to Set Priority"]] = payload.pmPriority;
-        row[map["Date - PM to Set Priority"]] = nowDate;
+      // Notifications (match local: only for priority changes that touch Top 3)
+      let generatedNotifications = [];
+      const skip = !!payload.skipNotifications;
+
+      if (!skip && payload.priority !== undefined) {
+        const newSnap = projectSnapshotFromRow_(row, map);
+        const notifs = generateNotificationsForMineUpdate_(oldSnap, newSnap, actorName, mySlot);
+        generatedNotifications = appendNotifications_(notifs, actorName);
       }
 
+      return { ok: true, savedAtDisplay: fmtTime_(nowDate), generatedNotifications };
+    }
+
+    // --- MODE: pm (PM edits PM notes + designer assignments/priorities)
+    if (mode === "pm") {
       // PM notes
       if (payload.pmNotes !== undefined) {
         row[map["PM notes"]] = payload.pmNotes;
@@ -756,36 +1060,34 @@ function apiUpdate(body) {
 
       // Designers + their priorities
       for (let slot = 1; slot <= 3; slot++) {
-        const dHeader = `DESIGNER${slot}`;
         const pHeader = `Prioraty - DESIGNER${slot}`;
-        const nHeader = `Notes - DESIGNER${slot}`;
-        const dtHeader = `Date - DESIGNER${slot}`;
 
         const newDesigner = payload[`designer${slot}`];
         const newPrio = payload[`designer${slot}Priority`];
 
         if (newDesigner !== undefined) {
-          const oldDesigner = String(row[map[dHeader]] || "");
-          if (String(newDesigner || "") !== oldDesigner) {
-            // When a designer changes, clear their priority/notes/date for clean handoff (matches your local behavior).
-            row[map[pHeader]] = "";
-            row[map[nHeader]] = "";
-            row[map[dtHeader]] = "";
-          }
           setDesignerSlot_(row, map, slot, newDesigner, userIndex);
         }
-
         if (newPrio !== undefined) {
           row[map[pHeader]] = newPrio;
-          row[map[dtHeader]] = nowDate;
+          row[map[`Date - DESIGNER${slot}`]] = nowDate;
         }
       }
 
       rowRange.setValues([row]);
-      return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
+
+      // Notifications (PM-side rules)
+      let generatedNotifications = [];
+      if (!payload.skipNotifications) {
+        const newSnap = projectSnapshotFromRow_(row, map);
+        const notifs = generateNotificationsForPMUpdate_(oldSnap, newSnap, actorName);
+        generatedNotifications = appendNotifications_(notifs, actorName);
+      }
+
+      return { ok: true, savedAtDisplay: fmtTime_(nowDate), generatedNotifications };
     }
 
-    // --- MODE: ops (ops edits PM/designer assignments + operational notes)
+    // --- MODE: ops (leave as-is for now, no notif work here yet)
     if (mode === "ops") {
       if (payload.pmName !== undefined) row[map["PM"]] = payload.pmName;
 
@@ -808,6 +1110,7 @@ function apiUpdate(body) {
     lock.releaseLock();
   }
 }
+
 
 
 
