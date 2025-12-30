@@ -1,0 +1,772 @@
+<script>
+function ensureLegacyProjectShape_(p) {
+  if (!p) return p;
+
+  // Add legacy flat fields expected by some PM/Ops helpers (designer1/2/3, priority1/2/3, notes1/2/3)
+  if (!('designer1' in p) && Array.isArray(p.team)) {
+    const t = (slot) => (p.team.find(x => Number(x.slot) === Number(slot)) || {});
+    const t1 = t(1), t2 = t(2), t3 = t(3);
+
+    p.designer1 = t1.name || '';
+    p.designer2 = t2.name || '';
+    p.designer3 = t3.name || '';
+
+    p.priority1 = t1.priority || '';
+    p.priority2 = t2.priority || '';
+    p.priority3 = t3.priority || '';
+
+    p.notes1 = t1.notes || '';
+    p.notes2 = t2.notes || '';
+    p.notes3 = t3.notes || '';
+  }
+
+  return p;
+}
+
+function ensureLegacyProjects_(arr) {
+  return (arr || []).map(ensureLegacyProjectShape_);
+}
+
+function apiProjectsRequest_(params) {
+  // Apps Script mode
+  if (window.google && google.script && google.script.run && typeof gasCall === 'function') {
+    return gasCall('apiProjects', params);
+  }
+
+  // Local/Express fallback
+  const q = new URLSearchParams();
+  q.set('mode', params.mode || '');
+  q.set('email', params.email || '');
+  if (params.pmName !== undefined) q.set('pmName', params.pmName);
+  if (params.includeUnassigned !== undefined) q.set('includeUnassigned', params.includeUnassigned);
+  q.set('_t', Date.now());
+  return fetch('/api/projects?' + q.toString()).then(r => r.json());
+}
+
+function loadMine() {
+  const emailParam = new URLSearchParams(window.location.search).get('email') || window.currentUser.email;
+  document.getElementById('liveText').textContent = 'Loading...';
+
+  apiProjectsRequest_({ mode: 'mine', email: emailParam })
+    .then(res => {
+      const rows = ensureLegacyProjects_(res.projects || []);
+      GLOBAL_META = res; // Store full response
+
+      const next = rows || [];
+      if (window.Notif) {
+        Notif.checkCompliance(next, 'mine');
+      }
+      MINE_ROWS = next;
+
+      hydrateReactiveFilters(MINE_ROWS, [
+        { id: 'mineStatus', key: 'status', type: 'status', defaultLabel: 'All Statuses' },
+        { id: 'minePMFilter', key: 'pmName', type: 'pm', defaultLabel: 'All PMs', transform: (v) => v || 'Unassigned' }
+      ]);
+
+      document.getElementById('liveText').textContent = 'Live';
+      if (ACTIVE_TAB === 'mine') render();
+    })
+    .catch(err => {
+      console.error(err);
+      if (!MINE_ROWS || MINE_ROWS.length === 0) {
+        console.warn('Using Fallback Projects');
+        MINE_ROWS = [
+          { rowIndex: 101, projectNumber: '101', projectName: 'Mock Project 1', status: 'Open', my: { priority: '' }, team: [{ slot: 1 }, { slot: 2 }, { slot: 3 }] },
+          { rowIndex: 102, projectNumber: '102', projectName: 'Mock Project 2', status: 'Open', my: { priority: '' }, team: [{ slot: 1 }, { slot: 2 }, { slot: 3 }] },
+          { rowIndex: 103, projectNumber: '103', projectName: 'Mock Project 3', status: 'Open', my: { priority: '' }, team: [{ slot: 1 }, { slot: 2 }, { slot: 3 }] }
+        ];
+        if (ACTIVE_TAB === 'mine') render();
+      }
+    });
+}
+
+
+// --- Conflict Logic & Batch Update ---
+async function handlePriorityChange(rowIndex, newPrio) {
+  const row = MINE_ROWS.find(r => r.rowIndex === rowIndex);
+  if (!row) return;
+
+  // If clearing priority, just save
+  if (!newPrio) {
+    saveRow(rowIndex, 'mine');
+    return;
+  }
+
+  // Check Conflict
+  const conflict = MINE_ROWS.find(r => r.rowIndex !== rowIndex && String(r.my.priority) === String(newPrio));
+
+  if (conflict) {
+    // Show Modal
+    const choice = await showConflictModal(newPrio, conflict.projectName);
+    if (choice === 'cancel') {
+      render(); // Reset UI
+      return;
+    }
+    if (choice === 'replace') {
+      // Set conflict to empty
+      conflict.my.priority = '';
+      row.my.priority = newPrio;
+      // Optimistic update
+      render();
+      // Save both
+      saveRow(conflict.rowIndex, 'mine');
+      saveRow(row.rowIndex, 'mine');
+    }
+    if (choice === 'shift') {
+      await executeShift(rowIndex, parseInt(newPrio));
+    }
+  } else {
+    // No conflict, just save
+    saveRow(rowIndex, 'mine');
+  }
+}
+
+function showConflictModal(prio, otherName) {
+  return new Promise(resolve => {
+    // Check if exists
+    let modal = document.getElementById('conflictModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'conflictModal';
+      modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+      <div style="background:#0f172a; border:1px solid #334155; padding:0; border-radius:16px; width:450px; max-width:95%; box-shadow:0 25px 50px -12px rgba(0,0,0,0.6); overflow:hidden; font-family:'Inter',sans-serif;">
+        <div style="background:#1e293b; padding:16px 24px; border-bottom:1px solid #334155;">
+          <h3 style="margin:0; color:#fff; font-size:18px; display:flex; align-items:center; gap:8px;">
+            <span style="font-size:20px;">⚠️</span> Priority Conflict
+          </h3>
+        </div>
+        <div style="padding:24px;">
+          <p style="color:#cbd5e1; font-size:14px; margin-top:0; margin-bottom:16px; line-height:1.5;">
+            Priority <strong style="color:#fcd34d; font-size:16px;">${prio}</strong> is currently assigned to:
+          </p>
+          <div style="background:#334155; padding:12px; border-radius:8px; border-left:4px solid #fcd34d; margin-bottom:24px;">
+            <div style="color:#fff; font-weight:600; font-size:14px;">${otherName || 'Another Project'}</div>
+            <div style="color:#94a3b8; font-size:12px;">Will be affected by your action</div>
+          </div>
+          
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <button id="btnShift" style="padding:12px; border-radius:8px; border:none; background:#3b82f6; color:white; cursor:pointer; font-weight:600; display:flex; justify-content:space-between; align-items:center; transition:background 0.2s;">
+              <span>Shift Down</span>
+              <span style="font-weight:400; font-size:12px; opacity:0.9;">Bump ${otherName ? 'conflict' : 'items'} & below rows down</span>
+            </button>
+            <button id="btnReplace" style="padding:12px; border-radius:8px; border:none; background:#ef4444; color:white; cursor:pointer; font-weight:600; display:flex; justify-content:space-between; align-items:center; transition:background 0.2s;">
+              <span>Replace</span>
+              <span style="font-weight:400; font-size:12px; opacity:0.9;">Take slot, unassign ${otherName ? 'current' : 'other'}</span>
+            </button>
+            <button id="btnCancel" style="padding:12px; border-radius:8px; border:1px solid #475569; background:transparent; color:#94a3b8; cursor:pointer; font-weight:500; margin-top:8px;">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    modal.style.display = 'flex';
+
+    document.getElementById('btnReplace').onclick = () => { modal.style.display = 'none'; resolve('replace'); };
+    document.getElementById('btnShift').onclick = () => { modal.style.display = 'none'; resolve('shift'); };
+    document.getElementById('btnCancel').onclick = () => { modal.style.display = 'none'; resolve('cancel'); };
+  });
+}
+
+async function executeShift(targetRowIndex, startPrio) {
+  // Logic: 
+  // 1. Get all ranked items (1..10).
+  // 2. Sort by rank (1 top).
+  // 3. Insert target item at startPrio position? 
+  //    Actually, simpler: 
+  //    We want target to be 'startPrio'.
+  //    The item currently at 'startPrio' moves to 'startPrio+1'.
+  //    The item at 'startPrio+1' moves to '+2'...
+  //    Chain reaction until gap or >10.
+
+  const updates = [];
+  const target = MINE_ROWS.find(r => r.rowIndex === targetRowIndex);
+  target.my.priority = String(startPrio);
+  updates.push(target);
+
+  let currentPrio = startPrio;
+
+  // Find valid chain
+  // We need to find the item that WAS at currentPrio (excluding target)
+  // And move it to currentPrio + 1
+  // Repeat.
+
+  // Get all OTHER rows with numeric priority
+  let others = MINE_ROWS.filter(r => r.rowIndex !== targetRowIndex && getRank(r.my.priority) > 0);
+
+  // Map to simple objects {row, p} where p is 1-10 int
+  let chain = others.map(r => ({ r, p: parseInt(r.my.priority) })).sort((a, b) => a.p - b.p);
+
+  // We are inserting at 'startPrio'.
+  // Any item with p >= startPrio needs to be bumped.
+  // But strictly, if we set target to 5. Old 5 becomes 6. Old 6 becomes 7.
+  // If there is NO 6, then 6 is free, chain stops.
+
+  let bumpPrio = startPrio;
+  while (true) {
+    if (bumpPrio >= 10) {
+      // If we are bumping 10 -> 11 (Unranked)
+      const loser = chain.find(x => x.p === 10);
+      if (loser) {
+        loser.r.my.priority = ''; // Unassign
+        updates.push(loser.r);
+      }
+      break;
+    }
+
+    // Find item occupying the slot we want to push into (bumpPrio)
+    // Wait, initially target took 'startPrio'. 
+    // Is there a conflict at 'startPrio'? Yes, otherwise we wouldn't be here.
+    // So conflict item needs to move to 'bumpPrio + 1'.
+
+    const conflictItem = chain.find(x => x.p === bumpPrio);
+    if (!conflictItem) {
+      break; // Slot free, chain ends
+    }
+
+    // Move conflict item to next slot
+    bumpPrio++;
+    conflictItem.r.my.priority = String(bumpPrio);
+    updates.push(conflictItem.r);
+    // Loop continues to check if 'bumpPrio' (newly occupied) was alrady taken
+  }
+
+  // Apply visual updates
+  render();
+
+  // Save all modified rows
+  updates.forEach(u => saveRow(u.rowIndex, 'mine'));
+}
+
+function buildMineCard(r) {
+  const card = document.createElement('div');
+  card.id = `card-${r.rowIndex}`;
+
+  const effPrio = getEffectivePrio(r, 'mine');
+  const colorClass = getPrioClass(effPrio);
+  card.className = `card ${colorClass}`;
+
+  // Removed "Completed" condensation logic for Designers?
+  // User: "for the cards that are not assigned sort them by the max priority set by the other deisgner... there will be no complete button for designer"
+  // If PM marks it completed, Designer still sees it. It should probably still be condensed/styled as completed.
+  // REMOVED condensed logic per user request (Show inputs always)
+  /*
+  const isDone = normalize(effPrio) === 'completed';
+  if (isDone) {
+    card.classList.add('condensed');
+    card.title = "Marked Completed by PM/Ops";
+    card.onclick = (e) => {
+       if (!e.target.closest('select') && !e.target.closest('textarea')) toggleCondensed(card.id);
+    };
+  }
+  */
+
+  const top = document.createElement('div');
+  top.className = 'card-top';
+
+  const left = document.createElement('div');
+  const title = document.createElement('div');
+  title.className = 'project-title';
+  title.innerHTML = r.internalId
+    ? `<a href="https://app.contractorforeman.net/manage-projects/${encodeURIComponent(r.internalId)}" target="_blank">${r.projectName || 'Untitled'}</a>`
+    : (r.projectName || 'Untitled');
+
+  const meta = document.createElement('div');
+  meta.className = 'project-meta';
+
+  let pmTag = '';
+  // Show PM Priority if set, but it no longer drives sorting directly? 
+  // User: "keep everything the same but now get rid of the pm priority... pm can directly change the priority for each designer"
+  // So PM priority is deprecated?? 
+  // "get rid of the pm priority" - this might mean the concept of a single "PM Priority" field.
+  // Instead PM sets Designer Priority.
+  // But we still have `r.pm.priority` in data?
+  // If `r.pm.priority` is gone, we shouldn't display it.
+  // I will hide it or assume it's legacy.
+  // User: "get rid of the pm priority. keep the pm notes."
+
+  // So no PM priority tag.
+
+  meta.innerHTML = `<span>#${r.projectNumber}</span> <span class="pm-tag">${r.pmName || 'No PM'}</span>`;
+
+  left.appendChild(title);
+  left.appendChild(meta);
+  top.appendChild(left);
+  top.appendChild(buildStatusBadge(r.status));
+  card.appendChild(top);
+
+  const body = document.createElement('div');
+  body.className = 'card-body';
+
+  if (r.pm?.notes) {
+    const pn = document.createElement('div');
+    pn.className = 'pm-note';
+    pn.innerHTML = `<strong>PM Note:</strong> ${r.pm.notes}`;
+    body.appendChild(pn);
+  }
+
+  const fs = document.createElement('div');
+  fs.className = 'form-grid';
+
+  const grp1 = document.createElement('div');
+  grp1.innerHTML = '<label style="font-size:11px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px;">MY PRIORITY</label>';
+  const sel = document.createElement('select');
+  sel.className = `input-field ${!r.my?.priority ? 'error' : ''}`;
+  sel.dataset.row = r.rowIndex;
+
+  // Dynamic Priority Options (User Req: "if 10 or more, 1-10. if less, 1-x.")
+
+  // 1. Calculate Active Projects Count
+  const ARCHIVE_STATUSES = [
+    'abandoned,expired',
+    'approved - construction phase',
+    'completed - sent to client',
+    'paused - stalled by 3rd party',
+    'do not click - final submit for approval'
+  ];
+  const activeCount = MINE_ROWS.filter(row => !ARCHIVE_STATUSES.includes(normalize(row.status))).length;
+
+  const maxOptions = activeCount >= 10 ? 10 : Math.max(activeCount, 1); // Min 1 option
+
+  const opts = [];
+  for (let i = 1; i <= maxOptions; i++) {
+    opts.push(String(i));
+  }
+
+  const def = document.createElement('option');
+  def.value = ''; def.textContent = '—';
+  sel.appendChild(def);
+
+  opts.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o;
+
+    // Check who owns this priority
+    const owner = MINE_ROWS.find(row => String(row.my?.priority) === String(o));
+    if (owner && owner.rowIndex !== r.rowIndex) {
+      // Limit name length if needed, but for now full name is fine
+      let name = owner.projectName || 'Untitled';
+      if (name.length > 30) name = name.substring(0, 27) + '...';
+      opt.textContent = `${o} - ${name}`;
+    } else {
+      opt.textContent = o;
+    }
+
+    if (String(o) === String(r.my?.priority || '')) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  grp1.appendChild(sel);
+
+  const grp2 = document.createElement('div');
+  grp2.innerHTML = '<label style="font-size:11px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px;">MY NOTES</label>';
+  const ta = document.createElement('textarea');
+  ta.className = 'textarea-field';
+  ta.dataset.row = r.rowIndex;
+  ta.value = r.my?.notes || '';
+  grp2.appendChild(ta);
+
+  fs.appendChild(grp1);
+  fs.appendChild(grp2);
+  body.appendChild(fs);
+
+  // Team section
+  const tm = document.createElement('div');
+  tm.className = 'team-section';
+  const tList = document.createElement('div');
+  tList.className = 'team-grid';
+
+  [1, 2, 3].forEach(s => {
+    const m = r.team.find(t => t.slot === s);
+    const d = document.createElement('div');
+    d.className = 'team-card';
+
+    if (m?.name) {
+      // Need to show if it's ME?
+      // No, this is "Other Team Members" display or all?
+      // Usually shows others. My slot logic is handled by "My Priority".
+
+      const dateStr = m.dateDisplay ? m.dateDisplay.split(' ')[0] : '';
+      d.innerHTML = `
+            <div class="tm-header">${m.name}</div>
+            <div class="tm-meta">
+              <span>${m.priority || '-'}</span>
+              <span>${dateStr}</span>
+            </div>
+            <div class="tm-body">${m.notes || ''}</div>
+          `;
+    } else {
+      d.classList.add('tm-empty');
+      d.innerHTML = `
+            <div class="tm-header">Designer ${s}</div>
+            <div class="tm-body">Unassigned</div>
+          `;
+    }
+    tList.appendChild(d);
+  });
+  tm.appendChild(tList);
+  body.appendChild(tm);
+  card.appendChild(body);
+
+  const footer = document.createElement('div');
+  footer.className = 'card-footer';
+  footer.innerHTML = `<div style="display:flex;align-items:center;"><span class="sync-dot" id="dot-${r.rowIndex}"></span><span id="msg-${r.rowIndex}">${r.lastModified?.dateDisplay ? 'Upd ' + r.lastModified.dateDisplay : ''}</span></div><div>${r.my?.dateDisplay || ''}</div>`;
+  card.appendChild(footer);
+
+  // Drag & Drop Logic
+  const isActive = !['abandoned,expired', 'approved - construction phase', 'completed - sent to client'].some(s => normalize(r.status).includes(s));
+
+  if (isActive) {
+    card.setAttribute('draggable', 'true');
+    card.classList.add('draggable-card');
+
+    card.addEventListener('dragstart', (e) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', r.rowIndex);
+      card.classList.add('dragging');
+      // Store initial clientY to detecting direction if needed, but simple reorder is fine
+    });
+
+    card.addEventListener('dragend', (e) => {
+      card.classList.remove('dragging');
+      document.querySelectorAll('.draggable-card').forEach(c => c.classList.remove('drag-over'));
+    });
+
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault(); // Necessary to allow dropping
+      e.dataTransfer.dropEffect = 'move';
+      card.classList.add('drag-over');
+    });
+
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('drag-over');
+    });
+
+    card.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      const draggedRowIndex = parseInt(e.dataTransfer.getData('text/plain'));
+      if (draggedRowIndex === r.rowIndex) return;
+
+      await handleCardDrop(draggedRowIndex, r.rowIndex);
+    });
+  }
+
+  sel.addEventListener('change', () => {
+    sel.classList.remove('error');
+    handlePriorityChange(r.rowIndex, sel.value);
+  });
+  ta.addEventListener('input', () => debounceSave(r.rowIndex, 'mine'));
+
+  return card;
+}
+
+// DnD Handler
+async function handleCardDrop(draggedIdx, targetIdx) {
+  // 1. Get all Active cards (visible in grid)
+  // We rely on MINE_ROWS filters? Or just all Active?
+  // Let's us visual order from DOM or just sort MINE_ROWS?
+  // User wants "Manual Sorting". Best way is to manipulate the array logic.
+
+  // Strategy:
+  // Get all active rows sort by current priority (bumping unprioritized to bottom)
+  // Remove dragged item.
+  // Insert at target item's position.
+  // Re-assign priorities 1..N.
+
+  const row = MINE_ROWS.find(r => r.rowIndex === draggedIdx);
+  if (!row) return;
+
+  // Filter only active, "mine" view items
+  const ARCHIVE_STATUSES = ['abandoned,expired', 'approved - construction phase', 'completed - sent to client'];
+  let activeRows = MINE_ROWS.filter(r => !ARCHIVE_STATUSES.some(s => normalize(r.status).includes(s)));
+
+  // Current Sort: Priority 1..N, then others
+  activeRows.sort((a, b) => {
+    const pA = parseInt(a.my?.priority) || 999;
+    const pB = parseInt(b.my?.priority) || 999;
+    if (pA !== pB) return pA - pB;
+    // Stable sort for unprioritized? IDK.
+    return a.rowIndex - b.rowIndex;
+  });
+
+  const oldIndex = activeRows.findIndex(r => r.rowIndex === draggedIdx);
+  const newIndex = activeRows.findIndex(r => r.rowIndex === targetIdx);
+
+  if (oldIndex === -1 || newIndex === -1) return;
+
+  // Move
+  activeRows.splice(oldIndex, 1);
+  activeRows.splice(newIndex, 0, row);
+
+  // Re-assign Logic
+  // Assign 1 to N based on new order
+  const updates = [];
+
+  activeRows.forEach((r, idx) => {
+    const newPrio = String(idx + 1);
+    if (r.my.priority !== newPrio) {
+      r.my.priority = newPrio;
+      updates.push(r);
+    }
+  });
+
+  // Optimistic UI
+  render();
+
+  // Save changes
+  // Using Promise.all for speed - might spam server but fine for <20 items
+  await Promise.all(updates.map(u => saveRow(u.rowIndex, 'mine')));
+}
+
+function createFolderCard(title, rows, color) {
+  const folder = document.createElement('div');
+  folder.className = 'folder-card';
+  folder.style.background = `linear-gradient(135deg, ${color} 0%, ${adjustColor(color, -20)} 100%)`;
+
+  const header = document.createElement('h3');
+  header.innerHTML = `<span>${title}</span>`;
+
+  const count = document.createElement('p');
+  count.textContent = `${rows.length} project${rows.length !== 1 ? 's' : ''}`;
+
+  const contents = document.createElement('div');
+  contents.className = 'folder-contents';
+
+  rows.forEach(r => {
+    const condensedCard = buildMineCard(r);
+    condensedCard.classList.add('condensed');
+    contents.appendChild(condensedCard);
+  });
+
+  folder.appendChild(header);
+  folder.appendChild(count);
+  folder.appendChild(contents);
+
+  folder.addEventListener('click', (e) => {
+    if (!e.target.closest('.card')) {
+      folder.classList.toggle('expanded');
+    }
+  });
+
+  return folder;
+}
+
+// --- Archive Folder & Side Panel Logic ---
+
+// --- Archive Folder & Side Panel Logic ---
+
+// Refactored: Updates the Side Trigger instead of returning a card
+function updateArchiveTrigger(archiveRows, view = 'mine') {
+  const trigger = document.getElementById('archiveTrigger');
+  const countEl = document.getElementById('archiveTriggerCount');
+
+  if (!trigger || !countEl) return;
+
+  if (!archiveRows || archiveRows.length === 0) {
+    trigger.style.display = 'none';
+    return;
+  }
+
+  // Show Trigger logic
+  trigger.style.display = 'flex';
+  countEl.textContent = archiveRows.length;
+
+  // Update onclick behavior to pass fresh rows/view
+  trigger.onclick = () => openArchivePanel(archiveRows, view);
+}
+
+function openArchivePanel(rows, view = 'mine') {
+  const panel = document.getElementById('archivePanel');
+  const overlay = document.getElementById('sidePanelOverlay');
+  const content = document.getElementById('archiveContent');
+
+  // Sort by Last Modified Descending
+  const sorted = [...rows].sort((a, b) => (b.lastModified?.dateMs || 0) - (a.lastModified?.dateMs || 0));
+
+  content.innerHTML = '';
+
+  // Group by Status
+  // We use the same ARCHIVE_STATUSES list implicitly or dynamically.
+  // Let's group dynamically based on status content.
+  const groups = {};
+
+  // Initialize user-specified groups order if desired, or just dynamic.
+  // User listed 5 specific statuses. We can order by that.
+  const ORDER = [
+    'abandoned,expired',
+    'approved - construction phase',
+    'completed - sent to client',
+    'paused - stalled by 3rd party',
+    'do not click - final submit for approval'
+  ];
+
+  ORDER.forEach(s => groups[s] = []);
+  groups['other'] = []; // Fallback
+
+  sorted.forEach(r => {
+    const status = normalize(r.status);
+    if (groups[status]) {
+      groups[status].push(r);
+    } else {
+      // If status matches normalized key?
+      // Let's try exact match first
+      const key = ORDER.find(k => k === status);
+      if (key) groups[key].push(r);
+      else groups['other'].push(r);
+    }
+  });
+
+  [...ORDER, 'other'].forEach(category => {
+    const catRows = groups[category];
+    if (!catRows || catRows.length === 0) return;
+
+    // Display Title
+    // Capitalize or use original text? We only have normalized keys.
+    // We can map keys to display titles.
+    const titles = {
+      'abandoned,expired': 'Abandoned / Expired',
+      'approved - construction phase': 'Approved - Construction Phase',
+      'completed - sent to client': 'Completed - Sent to Client',
+      'paused - stalled by 3rd party': 'Paused - Stalled by 3rd Party',
+      'do not click - final submit for approval': 'Do Not Click - Final Submit',
+      'other': 'Other Archived'
+    };
+
+    const displayTitle = titles[category] || category.toUpperCase();
+
+    const header = document.createElement('h4');
+    header.className = 'archive-group-header';
+    header.textContent = `${displayTitle} (${catRows.length})`;
+    content.appendChild(header);
+
+    catRows.forEach(r => {
+      // Use Read-Only Condensed Card
+      const card = buildArchiveCard(r);
+      content.appendChild(card);
+    });
+  });
+
+  if (sorted.length === 0) {
+    content.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">Archive is empty</div>';
+  }
+
+  panel.classList.add('open');
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function buildArchiveCard(r) {
+  const card = document.createElement('div');
+  card.className = 'archive-card'; // Will add styles in index.html
+
+  // Data extraction
+  const projectNum = r.projectNumber || '#';
+  const title = r.projectName || 'Untitled Project';
+  const status = normalize(r.status);
+  const statusColor = PHASE_COLORS[status] || '#cbd5e1';
+  const displayDate = r.lastModified?.dateDisplay || 'No Date';
+  // Use PM Name if avail, else fallback
+  const pmName = r.pmName || 'No PM';
+
+  // Inline HTML with Hidden Details Section
+  card.innerHTML = `
+      <div class="ac-header-row">
+          <div style="font-weight:600; font-size:14px; color:var(--text-heading); line-height:1.3; flex:1; margin-right:12px;">${title}</div>
+          <div style="font-size:11px; color:var(--text-muted); white-space:nowrap;">${displayDate}</div>
+      </div>
+      <div class="ac-meta-row">
+          <div style="display:flex; align-items:center;">
+             <span style="font-size:11px; font-weight:700; color:var(--text-muted); margin-right:8px;">#${projectNum}</span>
+             <span class="status-badge" style="background:${statusColor}; font-size:10px; padding:2px 6px; border-radius:4px; color:white;">${status}</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted);">PM: ${pmName}</div>
+      </div>
+      
+      <!-- Hidden Inline Details -->
+      <div class="ac-details">
+          <div class="ac-detail-row">
+              <span class="ac-label">Designer:</span>
+              <span class="ac-val">${r.designerName || 'Unassigned'}</span>
+          </div>
+          <div class="ac-detail-row">
+              <span class="ac-label">Created:</span>
+              <span class="ac-val">${r.createdDate || 'Unknown'}</span>
+          </div>
+      </div>
+  `;
+
+  // Toggle Logic
+  card.onclick = () => {
+    card.classList.toggle('expanded');
+  };
+  return card;
+}
+
+// --- Read-Only Detail Modal Logic ---
+
+// Modal Logic Removed
+
+window.closeSidePanel = function () {
+  document.getElementById('archivePanel').classList.remove('open');
+  document.getElementById('sidePanelOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+};
+
+window.closeSidePanel = function () {
+  document.getElementById('archivePanel').classList.remove('open');
+  document.getElementById('sidePanelOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+};
+
+function smartUpdateCard(rowIndex, newPriority, oldPriority) {
+  if (typeof window.enhancedSmartUpdateCard === 'function') {
+    window.enhancedSmartUpdateCard(rowIndex, newPriority, oldPriority);
+    return;
+  }
+
+  const cardId = `card-${rowIndex}`;
+  const cardEl = document.getElementById(cardId);
+  if (!cardEl) return;
+
+  const cardData = MINE_ROWS.find(r => r.rowIndex === rowIndex);
+  if (!cardData) return;
+
+  const oldEffPrio = getEffectivePrio(cardData, 'mine');
+  cardData.my.priority = newPriority;
+  const newEffPrio = getEffectivePrio(cardData, 'mine');
+
+  const oldClass = getPrioClass(oldEffPrio);
+  const newClass = getPrioClass(newEffPrio);
+
+  if (oldClass) cardEl.classList.remove(oldClass);
+  if (newClass) cardEl.classList.add(newClass);
+
+  const grid = document.getElementById('mineGrid');
+  if (!grid || grid.style.display === 'none') return;
+
+  const wasSpecial = ['completed', 'on hold', 'abandoned'].includes(normalize(oldEffPrio));
+  const isSpecial = ['completed', 'on hold', 'abandoned'].includes(normalize(newEffPrio));
+
+  if (wasSpecial !== isSpecial) {
+    setTimeout(() => render(), 50);
+    return;
+  }
+
+  if (!isSpecial) {
+    // Fallback for simple reordering if animation module missing
+    const regularRows = MINE_ROWS.filter(r => {
+      const eff = normalize(getEffectivePrio(r, 'mine'));
+      return !['completed', 'on hold', 'abandoned'].includes(eff);
+    });
+
+    // ... sorting logic ...
+    // Simplest fallback: just re-render or do the swap
+    setTimeout(() => render(), 50);
+  }
+}
+
+</script>
