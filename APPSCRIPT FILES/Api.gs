@@ -16,135 +16,107 @@
    Helpers
 ========================= */
 
+
 function maybeNotifyAfterUpdate_(actorEmail, mode, payload, beforeRow, afterRow, map) {
-  const actor = getUserByEmail_(actorEmail);
-  const actorName = actor ? String(actor.name || "").trim() : actorEmail;
+  // map is your project sheet header->index map (same one used in apiUpdate)
+  const projNum = String(afterRow[map["projectNumber"]] || afterRow[map["project #"]] || '').trim();
+  const projName = String(afterRow[map["projectName"]] || afterRow[map["project"]] || '').trim();
 
-  const projNum = String(afterRow[map["Project #"]] || "").trim();
-  const projName = String(afterRow[map["Project"]] || "").trim();
-  const projectLabel = projNum ? `Project ${projNum}` : (projName || "Project");
+  // Build a quick lookup: name -> email (and email local-part -> email)
+  const users = getAllUsers_(); // expects [{ role, name, email }, ...]
+  const nameToEmail = {};
+  const localToEmail = {};
 
-  const pmName = String(afterRow[map["PM"]] || "").trim();
+  users.forEach(u => {
+    const nm = String(u.name || '').trim().toLowerCase();
+    const em = String(u.email || '').trim().toLowerCase();
+    if (nm && em) nameToEmail[nm] = em;
+    if (em && em.includes('@')) {
+      const local = em.split('@')[0];
+      if (local) localToEmail[local] = em;
+    }
+  });
 
-  const designerBySlot = (slot) => String(afterRow[map[`DESIGNER${slot}`]] || "").trim();
-  const prioBySlot = (slot) => String(afterRow[map[`Prioraty - DESIGNER${slot}`]] || "").trim();
+  const resolveEmail = (v) => {
+    const raw = String(v || '').trim();
+    if (!raw) return '';
+    const low = raw.toLowerCase();
 
-  const changed = (colName) => {
-    const idx = map[colName];
-    if (idx == null) return false;
-    const b = String(beforeRow[idx] == null ? "" : beforeRow[idx]).trim();
-    const a = String(afterRow[idx] == null ? "" : afterRow[idx]).trim();
+    // ignore common placeholders
+    if (low === 'unassigned' || low === 'n/a' || low === '-' || low === 'none') return '';
+
+    // already an email
+    if (low.includes('@')) return low;
+
+    // try exact name match
+    if (nameToEmail[low]) return nameToEmail[low];
+
+    // try matching against email local part (e.g. "paulina" -> paulina@...)
+    if (localToEmail[low]) return localToEmail[low];
+
+    return '';
+  };
+
+  // Pull recipients from payload (names or emails)
+  const dEmailsRaw = [];
+  ['designer1', 'designer2', 'designer3'].forEach(k => {
+    const em = resolveEmail(payload && payload[k]);
+    if (em) dEmailsRaw.push(em);
+  });
+
+  // de-dupe
+  const dEmails = Array.from(new Set(dEmailsRaw));
+
+  const pmEmail = resolveEmail(payload && payload.pmName);
+
+  // Detect changes by comparing before/after for the key fields you actually save
+  const changed = (key, payloadKey, label) => {
+    if (!map[key] && map[key] !== 0) return false;
+    const b = String(beforeRow[map[key]] || '').trim();
+    const a = String(afterRow[map[key]] || '').trim();
     return b !== a;
   };
 
-  const notify = (targetName, title, body) => {
-    targetName = String(targetName || "").trim();
-    if (!targetName) return;
+  const pmNotesChanged = changed("pm notes", "pmNotes", "PM notes");
+  const opsNotesChanged = changed("operational notes", "operationalNotes", "Operational notes");
 
-    // Don’t notify yourself
-    const tNorm = normalize_(targetName);
-    if (tNorm && (tNorm === normalize_(actorName) || tNorm === normalize_(actorEmail))) return;
+  const d1PriChanged = changed("prioraty - designer1", "designer1Priority", "Designer1 priority");
+  const d2PriChanged = changed("prioraty - designer2", "designer2Priority", "Designer2 priority");
+  const d3PriChanged = changed("prioraty - designer3", "designer3Priority", "Designer3 priority");
 
-    createNotification_({
-      targetRole: "ANY",
-      targetName,
-      title,
-      body,
-      projectNumber: projNum
-    });
-  };
+  // PM/Ops -> notify designers
+  if (mode === 'pm' || mode === 'ops') {
+    const shouldNotify = pmNotesChanged || opsNotesChanged;
+    if (shouldNotify) {
+      const title = `Project ${projNum}: Update`;
+      const body = `${projName || 'Project'} was updated.`;
 
-  const uniqueTargets = (arr) => {
-    const set = new Set();
-    (arr || []).forEach(v => {
-      const s = String(v || "").trim();
-      if (s) set.add(s);
-    });
-    return Array.from(set);
-  };
-
-  // MODE: PM
-  if (mode === "pm") {
-    // PM notes -> notify all assigned designers
-    if (payload.pmNotes !== undefined && changed("PM notes")) {
-      const designers = uniqueTargets([designerBySlot(1), designerBySlot(2), designerBySlot(3)]);
-      designers.forEach(d =>
-        notify(
-          d,
-          `${projectLabel}: PM note`,
-          `${actorName} added/updated a PM note on <b>${projName || projectLabel}</b>.`
-        )
-      );
+      // If we can't resolve designers, fallback to actor so you still see something during testing
+      const targets = dEmails.length ? dEmails : [String(actorEmail || '').trim().toLowerCase()];
+      Array.from(new Set(targets.filter(Boolean))).forEach(em => {
+        createNotification_({
+          targetRole: 'ANY',
+          targetName: em, // store EMAIL for reliable matching
+          title,
+          body,
+          projectNumber: projNum
+        });
+      });
     }
-
-    // Assignments / priority updates per slot
-    for (let slot = 1; slot <= 3; slot++) {
-      if (payload[`designer${slot}`] !== undefined && changed(`DESIGNER${slot}`)) {
-        const newD = designerBySlot(slot);
-        if (newD) {
-          notify(
-            newD,
-            `${projectLabel}: Assigned`,
-            `${actorName} assigned you to <b>${projName || projectLabel}</b>.`
-          );
-        }
-      }
-
-      if (payload[`designer${slot}Priority`] !== undefined && changed(`Prioraty - DESIGNER${slot}`)) {
-        const d = designerBySlot(slot);
-        const pr = prioBySlot(slot);
-        if (d) {
-          notify(
-            d,
-            `${projectLabel}: Priority set`,
-            `${actorName} set your priority to <b>${pr || "—"}</b> on <b>${projName || projectLabel}</b>.`
-          );
-        }
-      }
-    }
-    return;
   }
 
-  // MODE: mine (designer) -> notify PM when designer changes priority/notes
-  if (mode === "mine") {
-    let mySlot = null;
-    for (let slot = 1; slot <= 3; slot++) {
-      if (normalize_(designerBySlot(slot)) === normalize_(actorName)) {
-        mySlot = slot;
-        break;
-      }
-    }
-    if (!mySlot) return;
-
-    const prioChanged = payload.priority !== undefined && changed(`Prioraty - DESIGNER${mySlot}`);
-    const notesChanged = payload.notes !== undefined && changed(`Notes - DESIGNER${mySlot}`);
-
-    if (prioChanged || notesChanged) {
-      notify(
-        pmName,
-        `${projectLabel}: Designer update`,
-        `${actorName} updated priority/notes for <b>${projName || projectLabel}</b>.`
-      );
-    }
-    return;
-  }
-
-  // MODE: ops -> notify PM + designers when ops notes change
-  if (mode === "ops") {
-    if (payload.operationalNotes !== undefined && changed("Operational notes")) {
-      const designers = uniqueTargets([designerBySlot(1), designerBySlot(2), designerBySlot(3)]);
-      notify(
-        pmName,
-        `${projectLabel}: Ops update`,
-        `${actorName} updated operational notes on <b>${projName || projectLabel}</b>.`
-      );
-      designers.forEach(d =>
-        notify(
-          d,
-          `${projectLabel}: Ops update`,
-          `${actorName} updated operational notes on <b>${projName || projectLabel}</b>.`
-        )
-      );
+  // Designer -> notify PM (if priorities/notes changed)
+  if (mode === 'mine') {
+    const shouldNotify = d1PriChanged || d2PriChanged || d3PriChanged;
+    if (shouldNotify) {
+      const target = (pmEmail || String(actorEmail || '').trim().toLowerCase());
+      createNotification_({
+        targetRole: 'ANY',
+        targetName: target, // store EMAIL for reliable matching
+        title: `Project ${projNum}: Designer update`,
+        body: `${projName || 'Project'} priority/notes changed.`,
+        projectNumber: projNum
+      });
     }
   }
 }
