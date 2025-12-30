@@ -1,5 +1,5 @@
 // Api.gs
-// 519
+// 548
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -492,6 +492,8 @@ function apiBootstrap(email) {
  *     customSortOrder?: [...]
  *   }
  */
+
+
 function apiProjects(params) {
   const email = assertDomain_((params && params.email) || getMyEmail_());
   const mode = (params && params.mode) || "mine";
@@ -577,7 +579,7 @@ function apiProjects(params) {
     const raw = String(pmName || "").trim();
     const rawUpper = raw.toUpperCase();
 
-    // ✅ FIX: PM UI uses "__ALL__" as the All Projects value.
+    // ✅ PM UI uses "__ALL__" as the All Projects value.
     const isAllProjects =
       rawUpper === "__ALL__" ||
       normalize_(raw).replace(/\s+/g, "") === "allprojects";
@@ -604,16 +606,32 @@ function apiProjects(params) {
     filtered = projects;
   }
 
-  // Designer counts (used by PM UI)
+  // ✅ Step 4 FIX: Active counts per designer across ALL projects (matches local)
+  // Keyed by normalized name (lowercase/trim) because the PM frontend looks up counts that way.
   const designerCounts = {};
-  filtered.forEach(p => {
-    (p.team || []).forEach(t => {
-      const n = String(t.name || "").trim();
-      if (!n) return;
-      if (!designerCounts[n]) designerCounts[n] = 0;
-      designerCounts[n] += 1;
+  if (mode === "pm") {
+    const INACTIVE_STATUSES = [
+      "Abandoned",
+      "Expired",
+      "Approved - Construction Phase",
+      "Completed - Sent to Client",
+      "Paused - Stalled by 3rd Party",
+      "Do Not Click - Final Submit for Approval"
+    ];
+    const norm = (s) => String(s || "").toLowerCase().trim();
+
+    projects.forEach(p => {
+      const status = norm(p.status);
+      const isInactive = INACTIVE_STATUSES.some(s => status.includes(norm(s)));
+      if (isInactive) return;
+
+      (p.team || []).forEach(t => {
+        const des = norm(t.name);
+        if (!des || des === "unassigned") return;
+        designerCounts[des] = (designerCounts[des] || 0) + 1;
+      });
     });
-  });
+  }
 
   const response = {
     projects: filtered,
@@ -623,9 +641,7 @@ function apiProjects(params) {
   if (mode === "pm") {
     const pmName = pmQuery || user.name;
 
-    // ✅ IMPORTANT: Do NOT inject "All Projects" here.
-    // The PM frontend already creates the All Projects option with value "__ALL__".
-    // We only ensure "__ALL__" exists in pmList for parity with local behavior.
+    // PM frontend creates the All Projects option; backend just provides "__ALL__" for consistency.
     const list = Array.from(pmSet)
       .filter(v => v && String(v).trim() !== "__ALL__")
       .sort((a, b) => a.localeCompare(b));
