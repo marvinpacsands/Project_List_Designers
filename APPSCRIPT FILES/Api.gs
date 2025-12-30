@@ -1,5 +1,5 @@
 // Api.gs
-// 816
+// 913
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -15,6 +15,123 @@
 /* =========================
    Helpers
 ========================= */
+function syncCompletionCelebrations_() {
+  // Rate-limit: don’t rescan the Projects sheet on every single poll.
+  const cache = CacheService.getScriptCache();
+  if (cache.get("COMPLETION_SYNC_RECENT")) return;
+  cache.put("COMPLETION_SYNC_RECENT", "1", 15); // 15s
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const trackerRaw = props.getProperty("STATUS_TRACKER_JSON");
+    const tracker = safeJsonParse_(trackerRaw, null);
+
+    const { sh, map } = getProjectsSheetMap_();
+    const values = sh.getDataRange().getValues();
+    if (values.length < 2) return;
+
+    const CELEBRATE = new Set([
+      "completed - sent to client",
+      "approved - construction phase"
+    ]);
+
+    const userIndex = buildUserIndex_();
+    const current = {};
+    const notifs = [];
+
+    for (let r = 1; r < values.length; r++) {
+      const row = values[r];
+
+      const projectNumber = String(row[map["Project #"]] || "").trim();
+      if (!projectNumber) continue;
+
+      const projectName = String(row[map["Project"]] || "").trim();
+      const statusRaw = String(row[map["Status"]] || "").trim();
+      const newStatusNorm = normalize_(statusRaw);
+
+      current[projectNumber] = newStatusNorm;
+
+      // Baseline run: don’t spam celebration notifications for historical data.
+      if (!tracker || typeof tracker !== "object") continue;
+
+      const oldStatusNorm = String(tracker[projectNumber] || "");
+
+      // Only fire when status CHANGES into one of the celebration statuses.
+      if (newStatusNorm === oldStatusNorm) continue;
+      if (!CELEBRATE.has(newStatusNorm)) continue;
+
+      // Build team (designer slots + PM), same spirit as your local app.
+      const teamNames = [];
+      const deliverTo = [];
+
+      // Designers 1–3
+      for (let slot = 1; slot <= 3; slot++) {
+        const dn = String(row[map[`DESIGNER${slot}`]] || "").trim();
+        const de = String(row[map[`Email - DESIGNER${slot}`]] || "").trim();
+
+        if (dn && !isUnassigned_(normalize_(dn))) teamNames.push(dn);
+
+        const email = resolveEmailFrom_(de || dn, userIndex);
+        if (email) deliverTo.push(email);
+        else if (dn && !isUnassigned_(normalize_(dn))) deliverTo.push(dn);
+      }
+
+      // PM
+      const pmName = String(row[map["PM"]] || "").trim();
+      if (pmName && !isUnassigned_(normalize_(pmName))) teamNames.push(pmName);
+
+      const pmEmail = resolveEmailFrom_(pmName, userIndex);
+      if (pmEmail) deliverTo.push(pmEmail);
+      else if (pmName && !isUnassigned_(normalize_(pmName))) deliverTo.push(pmName);
+
+      // De-dupe
+      const uniqueTeamNames = Array.from(new Set(teamNames.filter(Boolean)));
+      const uniqueDeliverTo = Array.from(new Set(deliverTo.filter(Boolean)));
+
+      uniqueDeliverTo.forEach((who) => {
+        notifs.push({
+          targetRole: "ANY",
+          targetName: who,
+          title: "Project Celebration! 🎉",
+          body: `${hlProj_(projectName)}<br>Status changed to: <strong>${statusRaw}</strong>`,
+          projectNumber: projectNumber,
+
+          type: "COMPLETED_MODAL",
+          projectName: projectName,
+          status: statusRaw,
+          team: uniqueTeamNames
+        });
+      });
+    }
+
+    // If tracker is missing/invalid (first ever run), set baseline now and exit.
+    if (!trackerRaw) {
+      props.setProperty("STATUS_TRACKER_JSON", JSON.stringify(current));
+      return;
+    }
+
+    // Update tracker to latest snapshot
+    props.setProperty("STATUS_TRACKER_JSON", JSON.stringify(current));
+
+    // Append celebration notifications (actorName "SYSTEM" avoids self-filtering)
+    if (notifs.length) appendNotifications_(notifs, "SYSTEM");
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function resolveEmailFrom_(nameOrEmail, userIndex) {
+  const v = String(nameOrEmail || "").trim();
+  if (!v) return "";
+  if (v.includes("@")) return v;
+
+  const nm = normalize_(v);
+  const u = userIndex && userIndex.byName ? userIndex.byName[nm] : null;
+  return u && u.email ? u.email : "";
+}
+
 function looksLikeEmail_(v) {
   const s = String(v == null ? "" : v).trim();
   // Simple check: enough to tell an email from a name.
@@ -1174,6 +1291,10 @@ function getNotificationsSheetMap_() {
 
 
 function apiGetNotifications(params) {
+  // Step 9: before returning unread notifications, detect new completion/approval
+  // transitions and create "COMPLETED_MODAL" notifications (confetti flow).
+  syncCompletionCelebrations_();
+
   const email = assertDomain_((params && params.email) || getMyEmail_());
   const name = String((params && params.name) || "").trim();
 
@@ -1189,11 +1310,11 @@ function apiGetNotifications(params) {
   const splitTargets = (v) =>
     String(v || "")
       .split(",")
-      .map(x => String(x || "").trim())
+      .map((s) => s.trim())
       .filter(Boolean);
 
   const truthy = (v) => {
-    const s = String(v == null ? "" : v).trim().toLowerCase();
+    const s = String(v || "").trim().toLowerCase();
     return s === "true" || s === "1" || s === "yes";
   };
 
@@ -1206,7 +1327,7 @@ function apiGetNotifications(params) {
     const readBy = safeJsonParse_(row[map["readByJson"]], []);
     const readArr = Array.isArray(readBy) ? readBy : [];
 
-    // Match local: return only notifications meant for this user AND not already read by them
+    // Only return notifications meant for this user AND not already read by them
     if (readArr.map(normalize_).includes(emailNorm)) continue;
 
     const targetRoleRaw = String(row[map["targetRole"]] || "ANY").trim();
@@ -1247,7 +1368,7 @@ function apiGetNotifications(params) {
       body,
       projectNumber,
 
-      // Optional fields (local UI uses these if present)
+      // Optional fields used by completed modal
       type,
       projectName,
       status,
@@ -1259,6 +1380,7 @@ function apiGetNotifications(params) {
   out.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return out;
 }
+
 
 
 function apiAckNotification(body) {
