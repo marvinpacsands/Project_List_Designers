@@ -1,5 +1,5 @@
 // Api.gs
-// 548
+// 605
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -555,7 +555,6 @@ function apiProjects(params) {
   // Build lists for filters
   const pmSet = new Set();
   const statusSet = new Set();
-  let totalUnassigned = 0;
 
   projects.forEach(p => {
     const pmName = String(p.pmName || "").trim();
@@ -564,9 +563,24 @@ function apiProjects(params) {
 
     const st = String(p.status || "").trim();
     if (st) statusSet.add(st);
-
-    if (!pmName || normalize_(pmName) === "unassigned") totalUnassigned += 1;
   });
+
+  // ✅ Step 5 FIX: Global Unassigned Count (matches local)
+  // Excludes archived-type rows based on status and PM priority text.
+  const archiveKeywords = ["completed", "cancelled", "on hold", "abandoned"];
+  const totalUnassigned = projects.filter(p => {
+    const pmName = String(p.pmName || "").trim();
+    const isUnassigned = !pmName || normalize_(pmName) === "unassigned";
+    if (!isUnassigned) return false;
+
+    const s = String(p.status || "").toLowerCase();
+    const pPrio = String((p.pm && p.pm.priority) || "").toLowerCase();
+
+    if (archiveKeywords.some(k => s.includes(k))) return false;
+    if (archiveKeywords.some(k => pPrio.includes(k))) return false;
+
+    return true;
+  }).length;
 
   // Filter by mode
   let filtered = projects;
@@ -579,7 +593,6 @@ function apiProjects(params) {
     const raw = String(pmName || "").trim();
     const rawUpper = raw.toUpperCase();
 
-    // ✅ PM UI uses "__ALL__" as the All Projects value.
     const isAllProjects =
       rawUpper === "__ALL__" ||
       normalize_(raw).replace(/\s+/g, "") === "allprojects";
@@ -606,8 +619,7 @@ function apiProjects(params) {
     filtered = projects;
   }
 
-  // ✅ Step 4 FIX: Active counts per designer across ALL projects (matches local)
-  // Keyed by normalized name (lowercase/trim) because the PM frontend looks up counts that way.
+  // Active counts per designer across ALL projects (matches local)
   const designerCounts = {};
   if (mode === "pm") {
     const INACTIVE_STATUSES = [
@@ -627,8 +639,9 @@ function apiProjects(params) {
 
       (p.team || []).forEach(t => {
         const des = norm(t.name);
-        if (!des || des === "unassigned") return;
-        designerCounts[des] = (designerCounts[des] || 0) + 1;
+        if (des && des !== "unassigned") {
+          designerCounts[des] = (designerCounts[des] || 0) + 1;
+        }
       });
     });
   }
@@ -641,13 +654,11 @@ function apiProjects(params) {
   if (mode === "pm") {
     const pmName = pmQuery || user.name;
 
-    // PM frontend creates the All Projects option; backend just provides "__ALL__" for consistency.
     const list = Array.from(pmSet)
       .filter(v => v && String(v).trim() !== "__ALL__")
       .sort((a, b) => a.localeCompare(b));
 
     response.pmList = ["__ALL__", ...list];
-
     response.statusList = Array.from(statusSet).sort((a, b) => a.localeCompare(b));
     response.totalUnassigned = totalUnassigned;
     response.designerCounts = designerCounts;
