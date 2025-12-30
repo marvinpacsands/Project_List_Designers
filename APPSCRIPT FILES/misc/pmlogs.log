@@ -1,0 +1,744 @@
+exec?impersonate=francesca%40pacsands.com:11 Unrecognized feature: 'ambient-light-sensor'.
+exec?impersonate=francesca%40pacsands.com:11 Unrecognized feature: 'speaker'.
+exec?impersonate=francesca%40pacsands.com:11 Unrecognized feature: 'vibrate'.
+exec?impersonate=francesca%40pacsands.com:11 Unrecognized feature: 'vr'.
+about:blank:1 An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+userCodeAppPanel?createOAuthDialog=true:1 Unrecognized feature: 'ambient-light-sensor'.
+userCodeAppPanel?createOAuthDialog=true:1 Unrecognized feature: 'speaker'.
+userCodeAppPanel?createOAuthDialog=true:1 Unrecognized feature: 'vibrate'.
+userCodeAppPanel?createOAuthDialog=true:1 Unrecognized feature: 'vr'.
+userCodeAppPanel?createOAuthDialog=true:3  🚀 VERSION INFO  Commit: Feature: Add version logging + Fix Sanitize ID | Date: 2025-12-30
+userCodeAppPanel?createOAuthDialog=true:7 Logged in as: {email: 'francesca@pacsands.com', actorEmail: 'marvin@pacsands.com', isImpersonating: true, isAdmin: true}
+userCodeAppPanel?createOAuthDialog=true:33 [Firebase] Initialized
+userCodeAppPanel?createOAuthDialog=true:566 [ANIMATION INIT] Animations module loaded
+userCodeAppPanel?createOAuthDialog=true:567 [ANIMATION INIT] window.triggerConfetti available: true
+userCodeAppPanel?createOAuthDialog=true:568 [ANIMATION INIT] window.enhancedSmartUpdateCard available: true
+userCodeAppPanel?createOAuthDialog=true:569 [ANIMATION INIT] window.confetti available: false
+2037638958-warden_bin_i18n_warden.js:164 Net state changed from IDLE to BUSY
+userCodeAppPanel?createOAuthDialog=true:574 🎉 Dashboard animations enabled! (DOMContentLoaded)
+userCodeAppPanel?createOAuthDialog=true:715 [Fire] Starting Realtime Listener...
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Sam Gordon" -> "sam gordon". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for sam gordon. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Marvin Qaqos" -> "marvin qaqos". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for marvin qaqos. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Sam Gordon" -> "sam gordon". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for sam gordon. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Marvin Qaqos" -> "marvin qaqos". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for marvin qaqos. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:724
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+2037638958-warden_bin_i18n_warden.js:164 Net state changed from BUSY to IDLE
+2037638958-warden_bin_i18n_warden.js:164 Net state changed from IDLE to BUSY
+userCodeAppPanel?createOAuthDialog=true:648 [Notif] Server generated notifications (PM): (2) [{…}, {…}]
+logger.ts:115 [2025-12-30T09:27:52.214Z]  @firebase/database: FIREBASE WARNING: update at / failed: permission_denied 
+te @ logger.ts:115
+se.warn @ logger.ts:206
+Oe @ util.ts:161
+(anonymous) @ Repo.ts:581
+(anonymous) @ PersistentConnection.ts:641
+rn.onDataMessage_ @ PersistentConnection.ts:673
+bt.onDataMessage_ @ Connection.ts:321
+bt.onPrimaryMessageReceived_ @ Connection.ts:313
+(anonymous) @ Connection.ts:210
+gt.appendFrame_ @ WebSocketConnection.ts:302
+gt.handleIncomingFrame @ WebSocketConnection.ts:354
+mySock.onmessage @ WebSocketConnection.ts:224
+userCodeAppPanel?createOAuthDialog=true:658 [Notif] Push failed Error: PERMISSION_DENIED: Permission denied
+    at Repo.ts:857:23
+    at ze (util.ts:546:5)
+    at xs (Repo.ts:847:5)
+    at Repo.ts:596:9
+    at PersistentConnection.ts:641:9
+    at rn.onDataMessage_ (PersistentConnection.ts:673:9)
+    at bt.onDataMessage_ (Connection.ts:321:10)
+    at bt.onPrimaryMessageReceived_ (Connection.ts:313:12)
+    at gt.onMessage (Connection.ts:210:16)
+    at gt.appendFrame_ (WebSocketConnection.ts:302:12)
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:658
+Promise.catch
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:658
+Promise.then
+savePM @ userCodeAppPanel?createOAuthDialog=true:643
+await in savePM
+save @ userCodeAppPanel?createOAuthDialog=true:448
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Sam Gordon" -> "sam gordon". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for sam gordon. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Marvin Qaqos" -> "marvin qaqos". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for marvin qaqos. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+2037638958-warden_bin_i18n_warden.js:164 Net state changed from BUSY to IDLE
+2037638958-warden_bin_i18n_warden.js:164 Net state changed from IDLE to BUSY
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Sam Gordon" -> "sam gordon". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for sam gordon. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Marvin Qaqos" -> "marvin qaqos". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for marvin qaqos. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Sam Gordon" -> "sam gordon". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for sam gordon. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Marvin Qaqos" -> "marvin qaqos". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for marvin qaqos. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Sam Gordon" -> "sam gordon". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for sam gordon. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Marvin Qaqos" -> "marvin qaqos". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for marvin qaqos. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+executeRemoteShift @ userCodeAppPanel?createOAuthDialog=true:787
+await in executeRemoteShift
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:482
+handleMouseUp_ @ unknown
+2037638958-warden_bin_i18n_warden.js:164 Net state changed from BUSY to IDLE
+2037638958-warden_bin_i18n_warden.js:164 Net state changed from IDLE to BUSY
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Sam Gordon" -> "sam gordon". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for sam gordon. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Marvin Qaqos" -> "marvin qaqos". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for marvin qaqos. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "marvaddi" -> "marvaddi". Count via meta: 2
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Paulina Lira" -> "paulina lira". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for paulina lira. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7
+2037638958-warden_bin_i18n_warden.js:164 Net state changed from BUSY to IDLE
+userCodeAppPanel?createOAuthDialog=true:378 [PM DEBUG] Designer: "Unassigned" -> "unassigned". Count via meta: undefined
+userCodeAppPanel?createOAuthDialog=true:383 [PM DEBUG] Count not found for unassigned. Keys: (5) ['Paulina Lira', 'marvaddi', 'Unassigned', 'Sam Gordon', 'Marvin Qaqos']
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:383
+buildPMCard @ userCodeAppPanel?createOAuthDialog=true:251
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:1276
+render @ userCodeAppPanel?createOAuthDialog=true:1275
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:116
+Promise.then
+loadPM @ userCodeAppPanel?createOAuthDialog=true:72
+autoRefresh @ userCodeAppPanel?createOAuthDialog=true:793
+setInterval
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:731
+Promise.then
+init @ userCodeAppPanel?createOAuthDialog=true:633
+(anonymous) @ userCodeAppPanel?createOAuthDialog=true:7

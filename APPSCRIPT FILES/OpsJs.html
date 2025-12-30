@@ -338,9 +338,9 @@
                         res.generatedNotifications.forEach(n => {
                             const safeId = String(n.id).replace(/\./g, '_');
                             n.id = safeId;
-                            updates['notifications/' + safeId] = n;
+                            updates[safeId] = n;
                         });
-                        db.ref().update(updates).catch(e => console.error('[Notif] Push failed', e));
+                        db.ref('notifications').update(updates).catch(e => console.error('[Notif] Push failed', e));
                     }
                 }
             }).catch(err => {

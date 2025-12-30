@@ -1,0 +1,706 @@
+(() => {
+    const STATE = {
+        boot: null,
+        audioCtx: null,
+        history: [], // Fetched from server
+        pollingInterval: 10000,
+        suppressedProjects: new Set() // Prevent double-popups logic
+    };
+
+    // --- UTILS ---
+    function norm(v) { return String(v ?? '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+    function formatTime(ms) {
+        if (!ms) return '';
+        const d = new Date(Number(ms));
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString();
+    }
+
+    // --- AUDIO UTILS ---
+    function ensureAudio() {
+        if (!STATE.audioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (Ctx) STATE.audioCtx = new Ctx();
+        }
+        if (STATE.audioCtx && STATE.audioCtx.state === 'suspended') STATE.audioCtx.resume();
+        return STATE.audioCtx;
+    }
+    function playSound() {
+        try {
+            const audio = new Audio('/sounds/notification.mp3');
+            audio.volume = 0.5; // Set volume to 50%
+            audio.play().catch(err => {
+                console.warn('[NOTIF] Could not play sound:', err);
+            });
+        } catch (e) {
+            console.warn('[NOTIF] Audio playback failed:', e);
+        }
+    }
+
+    // --- API ---
+    async function fetchNotifications() {
+        if (!window.currentUser?.email) return;
+        try {
+            const res = await fetch(`/api/notifications?email=${encodeURIComponent(window.currentUser.email)}&name=${encodeURIComponent(window.currentUser.name)}`);
+            const data = await res.json();
+
+            // Check for NEW unread items
+            const userEmail = window.currentUser.email;
+            const newUnread = data.filter(item => !item.readBy?.includes(userEmail));
+            const oldUnread = STATE.history.filter(item => !item.readBy?.includes(userEmail));
+
+            // Detect if there are any NEW notifications (not just unread but actually NEW)
+            if (newUnread.length > oldUnread.length) {
+                // Find the truly new ones by comparing IDs
+                const oldIds = new Set(STATE.history.map(n => n.id));
+                const brandNew = newUnread.filter(n => !oldIds.has(n.id));
+
+                // Show immediate popups for brand new notifications
+                brandNew.forEach(notif => {
+                    showImmediateNotification(notif);
+                });
+
+                // Optional: Play sound for new notifications
+                if (brandNew.length > 0) {
+                    playSound();
+                }
+            }
+
+            STATE.history = data;
+            renderInbox();
+            updateFabCount();
+            renderActiveToasts(); // Update toast area
+            updateBadges();       // Update tab badges
+        } catch (e) {
+            console.error('Notif Fetch Error', e);
+        }
+    }
+
+    function updateBadges() {
+        if (!window.currentUser?.email) return;
+        const myEmail = window.currentUser.email;
+
+        // Filter unread
+        const unread = STATE.history.filter(n => !n.readBy?.includes(myEmail));
+
+        // Count by Role
+        // PM View Badges (Notifications targeted at PMs)
+        const pmCount = unread.filter(n => n.targetRole === 'PM').length;
+
+        // Designer View Badges (Notifications targeted at Designers or ANY/Confetti)
+        // Note: Confetti (ANY) counts for Designer View usually
+        const desCount = unread.filter(n => n.targetRole === 'DESIGNER' || n.targetRole === 'ANY' || !n.targetRole).length;
+
+        renderTabBadge('tabPM', pmCount);
+        renderTabBadge('tabMine', desCount);
+    }
+
+    function renderTabBadge(tabId, count) {
+        const tab = document.getElementById(tabId);
+        if (!tab) return;
+
+        let badge = tab.querySelector('.tab-badge');
+        if (count > 0) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'tab-badge';
+                tab.appendChild(badge);
+            }
+            badge.textContent = count > 9 ? '9+' : count;
+            badge.style.display = 'flex';
+        } else {
+            if (badge) badge.style.display = 'none';
+        }
+    }
+
+    async function markAsRead(id) {
+        if (!window.currentUser?.email) return;
+        try {
+            await fetch('/api/notifications/ack', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, email: window.currentUser.email })
+            });
+            // Optimistic update
+            const n = STATE.history.find(x => x.id === id);
+            if (n) {
+                n.readBy = n.readBy || [];
+                n.readBy.push(window.currentUser.email);
+            }
+            renderInbox();
+            updateFabCount();
+        } catch (e) { }
+    }
+
+    // --- UI: INBOX ---
+    function createInbox() {
+        if (document.getElementById('inbox-fab')) return;
+        const fab = document.createElement('div');
+        fab.id = 'inbox-fab';
+        fab.className = 'inbox-fab'; // Add CSS class if needed
+        fab.style.cssText = "position:fixed; bottom:20px; right:20px; width:50px; height:50px; background:#3b82f6; border-radius:50%; box-shadow:0 4px 6px rgba(0,0,0,0.2); z-index:1500; display:flex; align-items:center; justify-content:center; color:white; cursor:pointer;";
+        fab.innerHTML = `<svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>`;
+
+        const badge = document.createElement('div');
+        badge.id = 'inbox-badge';
+        badge.style.cssText = "position:absolute; top:-5px; right:-5px; background:red; color:white; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:10px; display:none;";
+        fab.appendChild(badge);
+
+        fab.onclick = () => {
+            const d = document.getElementById('inbox-drawer');
+            if (d) {
+                d.classList.toggle('open');
+            }
+        };
+        document.body.appendChild(fab);
+
+        const drawer = document.createElement('div');
+        drawer.id = 'inbox-drawer';
+        drawer.style.cssText = "position:fixed; top:0; right:-320px; width:300px; height:100%; background:white; z-index:1499; box-shadow:-4px 0 15px rgba(0,0,0,0.1); transition:right 0.3s ease; display:flex; flex-direction:column;";
+
+        const style = document.createElement('style');
+        style.textContent = `#inbox-drawer.open { right: 0 !important; }`;
+        document.head.appendChild(style);
+
+        drawer.innerHTML = `
+            <div style="padding:16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700; color:#1e293b;">Notifications</span>
+                <button onclick="document.getElementById('inbox-drawer').classList.remove('open')" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+            </div>
+            <div id="inbox-list" style="flex:1; overflow-y:auto; padding:12px;"></div>
+        `;
+        document.body.appendChild(drawer);
+        renderInbox();
+    }
+
+    function renderInbox() {
+        const list = document.getElementById('inbox-list');
+        if (!list) return;
+
+        if (!STATE.history.length) {
+            list.innerHTML = '<div style="text-align:center; color:#94a3b8; font-size:13px; margin-top:40px;">No notifications</div>';
+            return;
+        }
+
+        list.innerHTML = STATE.history.map(item => `
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:8px;">
+                 <div style="font-size:11px; color:#64748b; margin-bottom:4px; display:flex; justify-content:space-between;">
+                    <span>${new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <button onclick="Notif.ack('${item.id}', this)" style="border:none; background:none; color:#3b82f6; cursor:pointer; font-weight:600;">Ack</button>
+                 </div>
+                 <div style="font-weight:600; color:#1e293b; font-size:13px; margin-bottom:2px;">${item.title}</div>
+                 <div style="font-size:13px; color:#475569;">${item.body}</div>
+            </div>
+        `).join('');
+    }
+
+    function updateFabCount() {
+        const b = document.getElementById('inbox-badge');
+        // Count only ACKNOWLEDGED/READ notifications for bell badge
+        const count = STATE.history.filter(item => item.readBy?.includes(window.currentUser?.email)).length;
+        if (b) {
+            b.innerText = count;
+            b.style.display = count > 0 ? 'block' : 'none';
+        }
+    }
+
+    // --- UI: IMMEDIATE TOAST NOTIFICATIONS ---
+    function createToastContainer() {
+        if (document.getElementById('toast-container')) return;
+        const container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = "position:fixed; top:70px; right:20px; width:350px; max-width:calc(100vw - 40px); z-index:9999; display:flex; flex-direction:column; gap:12px; pointer-events:none;";
+        document.body.appendChild(container);
+    }
+
+    function showImmediateNotification(notif) {
+        // Helper: Check completion global count for coins
+        const getCompletedCount = () => {
+            let completedCount = 0;
+            const relevantRows = (window.ACTIVE_TAB === 'pm' && window.PM_ROWS) ? window.PM_ROWS : (window.MINE_ROWS || []);
+            if (relevantRows.length > 0) {
+                completedCount = relevantRows.filter(r => {
+                    const s = String(r.status || '').toLowerCase();
+                    const p = String(r.my?.priority || r.pm?.priority || '').toLowerCase();
+                    return s.includes('completed') || s.includes('approved - construction') || p === 'completed';
+                }).length;
+            }
+            return completedCount;
+        };
+
+        // NEW: Modal for Completion
+        if (notif.type === 'COMPLETED_MODAL') {
+            // Check Suppression (did we just ack this project+status?)
+            const suppressionKey = `${notif.projectNumber}:${norm(notif.status)}`;
+            if (STATE.suppressedProjects.has(suppressionKey)) {
+                console.log(`[NOTIF] Suppressing duplicate modal for ${suppressionKey}`);
+                markAsRead(notif.id);
+                return;
+            }
+
+            console.log('[NOTIF] Received COMPLETION MODAL!');
+            if (window.triggerConfetti) {
+                window.triggerConfetti({ coins: getCompletedCount() });
+            }
+
+            // AUTO-ACK to prevent looping on refresh/poll
+            markAsRead(notif.id);
+
+            showCompletionModal(notif, getCompletedCount);
+            // Return early to prevent toast creation
+            return;
+        }
+
+        // Trigger confetti if special type (Legacy fallback or other events)
+        if (notif.type === 'CONFETTI') {
+            console.log('[NOTIF] Received CONFETTI notification! Triggering animation...');
+            if (window.triggerConfetti) {
+                window.triggerConfetti({ coins: getCompletedCount() });
+            }
+            // AUTO-ACK Confetti to prevent replay on refresh
+            markAsRead(notif.id);
+        }
+
+        createToastContainer();
+        const container = document.getElementById('toast-container');
+
+        const toast = document.createElement('div');
+        toast.id = 'toast-' + notif.id;
+
+        // FIX: Sticky Toast for Confetti (Legacy)
+        if (notif.type === 'CONFETTI') {
+            toast.dataset.persistent = 'true';
+        }
+
+        toast.style.cssText = `
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 12px;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            pointer-events: auto;
+            animation: slideIn 0.3s ease-out;
+            border: 1px solid rgba(255,255,255,0.2);
+        `;
+
+        toast.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:6px;">
+                <div style="font-weight:600; font-size:12px;">${notif.title}</div>
+                <div style="font-size:10px; opacity:0.85;">${new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+            <div style="font-size:11px; margin-bottom:8px; opacity:0.95; line-height:1.3;">${notif.body}</div>
+            <div style="display:flex; gap:6px;">
+                ${!notif.hideViewButton ? `<button 
+                    onclick="Notif.viewProject('${notif.projectNumber}', '${notif.id}')" 
+                    style="background:rgba(255,255,255,0.35); border:1px solid rgba(255,255,255,0.5); color:white; padding:5px 10px; border-radius:5px; cursor:pointer; font-weight:600; font-size:10px; flex:1;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.45)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.35)'">
+                    View Project
+                </button>` : ''}
+                <button 
+                    onclick="Notif.acknowledgeToast('${notif.id}')" 
+                    style="background:rgba(255,255,255,0.25); border:1px solid rgba(255,255,255,0.4); color:white; padding:5px 10px; border-radius:5px; cursor:pointer; font-weight:600; font-size:10px; flex:1;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.35)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.25)'">
+                    Acknowledge
+                </button>
+            </div>
+        `;
+
+        // Add slide-in animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(400px); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(400px); opacity: 0; }
+            }
+        `;
+        if (!document.getElementById('toast-animations')) {
+            style.id = 'toast-animations';
+            document.head.appendChild(style);
+        }
+
+        container.appendChild(toast);
+    }
+
+    // --- NEW: COMPLETION MODAL UI ---
+    function showCompletionModal(notif, countFn) {
+        const overlayId = 'modal-overlay-' + notif.id;
+        if (document.getElementById(overlayId)) return;
+        const overlay = document.createElement('div');
+        overlay.id = overlayId;
+        overlay.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:transparent; z-index:10000; display:flex; align-items:center; justify-content:center; animation:fadeIn 0.3s ease-out;";
+
+        // Team formatting
+        const teamList = (notif.team || []).map(t => `<span style='background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:12px; font-size:12px;'>${t}</span>`).join(' ');
+
+        overlay.innerHTML = `
+            <div style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); width:400px; max-width:90%; padding:24px; border-radius:16px; box-shadow:0 20px 50px rgba(0,0,0,0.3); color:white; text-align:center; position:relative; overflow:hidden; border:1px solid rgba(255,255,255,0.2);">
+                <!-- Shine effect -->
+                <div style="position:absolute; top:-50%; left:-50%; width:200%; height:200%; background:radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%); pointer-events:none;"></div>
+                
+                <div style="font-size:40px; margin-bottom:12px;">🎉</div>
+                <h2 style="margin:0 0 8px 0; font-size:24px; font-weight:800; letter-spacing:-0.5px;">${notif.status || 'Project Update!'}</h2>
+                
+                <div style="background:rgba(0,0,0,0.2); padding:16px; border-radius:12px; margin:16px 0;">
+                    <div style="font-size:11px; text-transform:uppercase; opacity:0.7; letter-spacing:1px; margin-bottom:4px;">PROJECT</div>
+                    <div style="font-size:18px; font-weight:700; line-height:1.3;">${notif.projectName || 'Project'}</div>
+                </div>
+
+                <div style="margin-bottom:24px;">
+                    <div style="font-size:11px; opacity:0.8; margin-bottom:8px;">Amazing work by</div>
+                    <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:6px;">
+                        ${teamList || 'The Team'}
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:12px;">
+                    <button id="btn-replay-${notif.id}" style="flex:1; background:white; color:#4f46e5; border:none; padding:12px; border-radius:8px; font-weight:700; cursor:pointer; font-size:14px; transition:transform 0.1s;">
+                        Celebrate Again 🎊
+                    </button>
+                    <button id="btn-ack-${notif.id}" style="flex:1; background:rgba(255,255,255,0.2); color:white; border:1px solid rgba(255,255,255,0.4); padding:12px; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px; transition:background 0.2s;">
+                        Acknowledge
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        // Add Keyframe if needed
+        if (!document.getElementById('modal-anim')) {
+            const s = document.createElement('style');
+            s.id = 'modal-anim';
+            s.textContent = `@keyframes fadeIn { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }`;
+            document.head.appendChild(s);
+        }
+
+        // Helpers
+        const close = () => {
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.remove(), 200);
+        };
+
+        // Attach Listeners
+        const btnReplay = document.getElementById(`btn-replay-${notif.id}`);
+        const btnAck = document.getElementById(`btn-ack-${notif.id}`);
+
+        btnReplay.onclick = () => {
+            // Replay confetti
+            if (window.triggerConfetti) {
+                window.triggerConfetti({ coins: countFn ? countFn() : 0 });
+            }
+            // Button effect
+            btnReplay.style.transform = 'scale(0.95)';
+            setTimeout(() => btnReplay.style.transform = 'scale(1)', 100);
+        };
+
+        btnAck.onclick = () => {
+            // Batch Acknowledge: Find all COMPLETED_MODAL notifications for this project
+            // and acknowledge them all to prevent "double popups"
+            const projectNum = notif.projectNumber;
+            const related = STATE.history.filter(n => n.type === 'COMPLETED_MODAL' && n.projectNumber === projectNum && (!n.readBy || !n.readBy.includes(window.currentUser?.email)));
+
+            related.forEach(n => Notif.acknowledgeToast(n.id));
+
+            // Fallback: Ensure current one is acked if not found in list (e.g. race)
+            Notif.acknowledgeToast(notif.id);
+
+            // SUPPRESS further popups for this SPECIFIC status change for 60 seconds
+            const suppressionKey = `${projectNum}:${norm(notif.status)}`;
+            STATE.suppressedProjects.add(suppressionKey);
+            setTimeout(() => STATE.suppressedProjects.delete(suppressionKey), 60000);
+
+            // Manually close modal (Toast ack removes toast, but modal is separate DOM)
+            close();
+        };
+    }
+
+    function renderActiveToasts() {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        // Get current unread notifications
+        let unread = STATE.history.filter(item => !item.readBy?.includes(window.currentUser?.email));
+
+        // FILTER: Only show toasts relevant to the current VIEW (ACTIVE_TAB)
+        // PM View: Show PM role notifications
+        // Designer View (Mine): Show Designer or Any role
+        if (window.ACTIVE_TAB === 'pm') {
+            unread = unread.filter(n => n.targetRole === 'PM');
+        } else if (window.ACTIVE_TAB === 'mine') {
+            unread = unread.filter(n => n.targetRole === 'DESIGNER' || n.targetRole === 'ANY' || !n.targetRole);
+        }
+        // Ops view might show all? For now, let's respect the "respective tabs" rule strictly.
+        // If Ops is active, maybe show both? Or just PM? Stick to filtering for now.
+
+        // Remove toasts for notifications that no longer exist or have been read OR filtered out
+        Array.from(container.children).forEach(toast => {
+            const id = toast.id.replace('toast-', '');
+            // FIX: Don't remove toasts marked as 'persistent' UNLESS they are acknowledged (handled elsewhere)
+            // Actually, if we switch tabs, we SHOULD hide the toast if it's not relevant to this view?
+            // User said: "only show notification in their respective tabs".
+            // So yes, hide it.
+            // But 'persistent' confetti might be special. Confetti usually for Designer.
+            // Let's hide if not in 'unread' list (which is now filtered).
+
+            const isPersistent = toast.dataset.persistent === 'true';
+            const stillRelevant = unread.find(n => n.id === id);
+
+            if (!stillRelevant) {
+                // If persistent, maybe we shouldn't kill it just because we switched tabs?
+                // But user wants segregation.
+                // "if the notitification is related to the designer view tab, then it should show in that tab."
+                // So we remove it.
+                toast.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => toast.remove(), 300);
+            }
+        });
+
+        // Add toasts for unread that don't have a toast yet
+        unread.forEach(notif => {
+            if (!document.getElementById('toast-' + notif.id)) {
+                showImmediateNotification(notif);
+            }
+        });
+    }
+
+    async function acknowledgeToast(id) {
+        // Immediately remove toast from DOM (instant feedback)
+        const toast = document.getElementById('toast-' + id);
+        if (toast) {
+            toast.remove();
+        }
+
+        // Optimistically update local state to prevent reappearing
+        const notif = STATE.history.find(n => n.id === id);
+        if (notif && window.currentUser) {
+            if (!notif.readBy) notif.readBy = [];
+            if (!notif.readBy.includes(window.currentUser.email)) {
+                notif.readBy.push(window.currentUser.email);
+            }
+        }
+
+        // Update server in background
+        await markAsRead(id);
+
+        // Update UI to reflect acknowledged state
+        renderInbox();
+        updateFabCount();
+    }
+
+    function viewProject(projectNumber, notifId) {
+        console.log('[Notif] Looking for project:', projectNumber);
+
+        // Try to find card directly by searching all cards for matching project number
+        const allCards = document.querySelectorAll('[id^="card-"]');
+        let targetCard = null;
+
+        // Method 1: Search through global data arrays
+        const dataSources = [
+            { name: 'PM_ROWS', data: window.PM_ROWS },
+            { name: 'MINE_ROWS', data: window.MINE_ROWS },
+            { name: 'OPS_ROWS', data: window.OPS_ROWS }
+        ];
+
+        for (const source of dataSources) {
+            if (source.data && Array.isArray(source.data)) {
+                console.log(`[Notif] Searching in ${source.name}, found ${source.data.length} projects`);
+                const project = source.data.find(p => String(p.projectNumber) === String(projectNumber));
+                if (project) {
+                    console.log(`[Notif] Found project in ${source.name}:`, project.projectName, 'rowIndex:', project.rowIndex);
+                    targetCard = document.getElementById('card-' + project.rowIndex);
+                    if (targetCard) {
+                        console.log('[Notif] Found card element:', targetCard.id);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Method 2: If not found, search DOM directly by iterating cards and checking content
+        if (!targetCard) {
+            console.log('[Notif] Trying DOM search method...');
+            allCards.forEach(card => {
+                const cardText = card.textContent || '';
+                if (cardText.includes('#' + projectNumber)) {
+                    console.log('[Notif] Found card by text search:', card.id);
+                    targetCard = card;
+                }
+            });
+        }
+
+        if (targetCard) {
+            console.log('[Notif] Scrolling to card:', targetCard.id);
+
+            // Scroll to card
+            targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // Create gradient highlight overlay
+            const highlightOverlay = document.createElement('div');
+            highlightOverlay.style.cssText = `
+                position: absolute;
+                top: -3px;
+                left: -3px;
+                right: -3px;
+                bottom: -3px;
+                background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
+                border-radius: inherit;
+                pointer-events: none;
+                z-index: 1;
+                transition: opacity 1s ease;
+                opacity: 1;
+            `;
+
+            // Ensure card has position relative for absolute overlay
+            const originalPosition = targetCard.style.position;
+            targetCard.style.position = 'relative';
+            targetCard.insertBefore(highlightOverlay, targetCard.firstChild);
+
+            // Add glow effect to card
+            targetCard.style.transition = 'box-shadow 1s ease';
+            targetCard.style.boxShadow = '0 0 30px rgba(102, 126, 234, 0.4)';
+
+            // After 2 seconds, smoothly fade out
+            setTimeout(() => {
+                highlightOverlay.style.opacity = '0';
+                targetCard.style.boxShadow = '0 0 0 rgba(102, 126, 234, 0)';
+
+                // Clean up after fade completes
+                setTimeout(() => {
+                    highlightOverlay.remove();
+                    targetCard.style.position = originalPosition;
+                    targetCard.style.boxShadow = '';
+                    targetCard.style.transition = '';
+                }, 1000);
+            }, 2000);
+        } else {
+            console.error('[Notif] Could not find card for project #' + projectNumber);
+            console.log('[Notif] Available cards:', Array.from(allCards).map(c => c.id));
+            alert('Could not find project #' + projectNumber + ' on this page. You may need to switch views or adjust filters.');
+        }
+    }
+
+
+    // --- UI: PERSISTENT ALERTS (COMPLIANCE) ---
+    function renderSticky(id, msg, isWarning, actions = []) {
+        const container = document.getElementById('sticky-alerts');
+        if (!container) {
+            console.error('Sticky container not found!');
+            return;
+        }
+
+        console.log(`Rendering sticky alert: ${id}`);
+        let el = document.getElementById(id);
+        if (!el) {
+            el = document.createElement('div');
+            el.id = id;
+            el.className = 'sticky-alert ' + (isWarning ? 'warning' : '');
+            container.appendChild(el);
+        }
+
+        let buttonsHtml = '';
+        actions.forEach((act, idx) => {
+            buttonsHtml += `<button onclick="window.NotifActions['${id}_${idx}']()">${act.label}</button>`;
+            window.NotifActions = window.NotifActions || {};
+            window.NotifActions[`${id}_${idx}`] = act.handler;
+        });
+
+        el.innerHTML = `
+            <span>${msg}</span>
+            <div style="display:flex; gap:8px;">${buttonsHtml}</div>
+        `;
+    }
+
+    function removeSticky(id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+    }
+
+    function flashCard(rowIndex) {
+        const card = document.getElementById('card-' + rowIndex);
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.style.transition = 'box-shadow 0.5s ease';
+            card.style.boxShadow = '0 0 0 6px #ef4444';
+            setTimeout(() => {
+                card.style.boxShadow = 'none';
+            }, 1000);
+        }
+    }
+
+    // Main Check Function
+    // Main Check Function
+    function checkCompliance(rows, mode) {
+        if (!rows) return;
+
+        // 1. Designer Compliance: Must have exactly 10 cards prioritized 1-10
+        if (mode === 'mine') {
+            // Define Archive / Inactive Statuses
+            const ARCHIVE_STATUSES = [
+                'abandoned,expired',
+                'approved - construction phase',
+                'completed - sent to client',
+                'paused - stalled by 3rd party',
+                'do not click - final submit for approval'
+            ];
+
+            const normalize = (s) => String(s || '').toLowerCase().trim();
+
+            // Filter for ACTIVE projects only
+            const activeRows = rows.filter(r => !ARCHIVE_STATUSES.includes(normalize(r.status)));
+
+            // Count unique priorities 1-10 assigned to this user WITHIN ACTIVE rows
+            const prioritized = activeRows.filter(r => {
+                const val = (r.my && r.my.priority !== undefined && r.my.priority !== null) ? r.my.priority : r.priority;
+                const p = parseInt(val);
+                return !isNaN(p) && p >= 1 && p <= 10;
+            });
+            const count = prioritized.length;
+            const totalActive = activeRows.length;
+
+            console.log(`[Compliance] Active: ${totalActive}, Prioritized: ${count} (Total Raw: ${rows.length})`);
+
+            // Logic:
+            // If Active >= 10 -> Must have exactly 10 prioritized.
+            // If Active < 10  -> Must have exactly ALL prioritized.
+            const target = totalActive >= 10 ? 10 : totalActive;
+
+            if (count !== target) {
+                renderSticky(
+                    'mine-compliance',
+                    `Action Required: You have ${count} prioritized projects. You must have exactly ${target}.`,
+                    true,
+                    []
+                );
+            } else {
+                removeSticky('mine-compliance');
+            }
+        }
+
+        // 2. PM Compliance: Projects missing assignments (Only check if Mode is PM)
+        // 2. PM Compliance: Projects missing assignments (Only check if Mode is PM)
+        if (mode === 'pm') {
+            removeSticky('pm-compliance');
+        }
+    }
+
+    // --- EXPORTS ---
+    window.Notif = {
+        init: () => {
+            createInbox();
+            createToastContainer();
+            fetchNotifications();
+            setInterval(fetchNotifications, STATE.pollingInterval);
+        },
+        reset: () => { }, // No-op for compatibility with core.js
+        ack: markAsRead,
+        acknowledgeToast: acknowledgeToast,
+        viewProject: viewProject,
+        checkCompliance: checkCompliance,
+        checkBadges: updateBadges
+    };
+})();
