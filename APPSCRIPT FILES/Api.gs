@@ -1,5 +1,5 @@
 // Api.gs
-// 
+// this is api.gs file
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
