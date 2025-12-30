@@ -15,163 +15,6 @@
 /* =========================
    Helpers
 ========================= */
-
-
-function maybeNotifyAfterUpdate_(actorEmail, mode, payload, beforeRow, afterRow, map) {
-  // map is your project sheet header->index map (same one used in apiUpdate)
-  const projNum = String(afterRow[map["projectNumber"]] || afterRow[map["project #"]] || '').trim();
-  const projName = String(afterRow[map["projectName"]] || afterRow[map["project"]] || '').trim();
-
-  // Build a quick lookup: name -> email (and email local-part -> email)
-  const users = getAllUsers_(); // expects [{ role, name, email }, ...]
-  const nameToEmail = {};
-  const localToEmail = {};
-
-  users.forEach(u => {
-    const nm = String(u.name || '').trim().toLowerCase();
-    const em = String(u.email || '').trim().toLowerCase();
-    if (nm && em) nameToEmail[nm] = em;
-    if (em && em.includes('@')) {
-      const local = em.split('@')[0];
-      if (local) localToEmail[local] = em;
-    }
-  });
-
-  const resolveEmail = (v) => {
-    const raw = String(v || '').trim();
-    if (!raw) return '';
-    const low = raw.toLowerCase();
-
-    // ignore common placeholders
-    if (low === 'unassigned' || low === 'n/a' || low === '-' || low === 'none') return '';
-
-    // already an email
-    if (low.includes('@')) return low;
-
-    // try exact name match
-    if (nameToEmail[low]) return nameToEmail[low];
-
-    // try matching against email local part (e.g. "paulina" -> paulina@...)
-    if (localToEmail[low]) return localToEmail[low];
-
-    return '';
-  };
-
-  // Pull recipients from payload (names or emails)
-  const dEmailsRaw = [];
-  ['designer1', 'designer2', 'designer3'].forEach(k => {
-    const em = resolveEmail(payload && payload[k]);
-    if (em) dEmailsRaw.push(em);
-  });
-
-  // de-dupe
-  const dEmails = Array.from(new Set(dEmailsRaw));
-
-  const pmEmail = resolveEmail(payload && payload.pmName);
-
-  // Detect changes by comparing before/after for the key fields you actually save
-  const changed = (key, payloadKey, label) => {
-    if (!map[key] && map[key] !== 0) return false;
-    const b = String(beforeRow[map[key]] || '').trim();
-    const a = String(afterRow[map[key]] || '').trim();
-    return b !== a;
-  };
-
-  const pmNotesChanged = changed("pm notes", "pmNotes", "PM notes");
-  const opsNotesChanged = changed("operational notes", "operationalNotes", "Operational notes");
-
-  const d1PriChanged = changed("prioraty - designer1", "designer1Priority", "Designer1 priority");
-  const d2PriChanged = changed("prioraty - designer2", "designer2Priority", "Designer2 priority");
-  const d3PriChanged = changed("prioraty - designer3", "designer3Priority", "Designer3 priority");
-
-  // PM/Ops -> notify designers
-  if (mode === 'pm' || mode === 'ops') {
-    const shouldNotify = pmNotesChanged || opsNotesChanged;
-    if (shouldNotify) {
-      const title = `Project ${projNum}: Update`;
-      const body = `${projName || 'Project'} was updated.`;
-
-      // If we can't resolve designers, fallback to actor so you still see something during testing
-      const targets = dEmails.length ? dEmails : [String(actorEmail || '').trim().toLowerCase()];
-      Array.from(new Set(targets.filter(Boolean))).forEach(em => {
-        createNotification_({
-          targetRole: 'ANY',
-          targetName: em, // store EMAIL for reliable matching
-          title,
-          body,
-          projectNumber: projNum
-        });
-      });
-    }
-  }
-
-  // Designer -> notify PM (if priorities/notes changed)
-  if (mode === 'mine') {
-    const shouldNotify = d1PriChanged || d2PriChanged || d3PriChanged;
-    if (shouldNotify) {
-      const target = (pmEmail || String(actorEmail || '').trim().toLowerCase());
-      createNotification_({
-        targetRole: 'ANY',
-        targetName: target, // store EMAIL for reliable matching
-        title: `Project ${projNum}: Designer update`,
-        body: `${projName || 'Project'} priority/notes changed.`,
-        projectNumber: projNum
-      });
-    }
-  }
-}
-
-
-
-function createNotification_(opts) {
-  const { sh, map } = getNotificationsSheetMap_();
-
-  const id = Utilities.getUuid();
-  const createdAt = Date.now();
-
-  const targetRole = String(opts.targetRole || 'ANY').toUpperCase();
-  const targetName = String(opts.targetName || '').trim(); // IMPORTANT: we’ll store EMAIL here
-  const title = String(opts.title || '').trim();
-  const body = String(opts.body || '').trim();
-  const projectNumber = String(opts.projectNumber || '').trim();
-
-  const row = new Array(Object.keys(map).length).fill('');
-
-  row[map["id"]] = id;
-  row[map["createdAt"]] = createdAt;
-  row[map["readByJson"]] = JSON.stringify([]);
-  row[map["targetRole"]] = targetRole;
-  row[map["targetName"]] = targetName;
-  row[map["title"]] = title;
-  row[map["body"]] = body;
-  row[map["projectNumber"]] = projectNumber;
-
-  sh.appendRow(row);
-
-  return { id, createdAt };
-}
-
-/**
- * ADMIN-only: lets you inject test notifications to confirm pipeline end-to-end.
- */
-function apiCreateNotification(params) {
-  const actorEmail = getMyEmail_();
-  if (!isAdminEmail_(actorEmail)) throw new Error('Not authorized');
-
-  const targetEmail = assertDomain_(params && params.targetEmail);
-  const title = String(params && params.title || 'Test Notification');
-  const body = String(params && params.body || 'Hello');
-  const projectNumber = String(params && params.projectNumber || '');
-
-  return createNotification_({
-    targetRole: 'ANY',
-    targetName: targetEmail, // store email for reliable matching
-    title,
-    body,
-    projectNumber
-  });
-}
-
 function apiAdminListUsers() {
   const actorEmail = getSessionEmail_();
   if (!isAdminEmail_(actorEmail)) throw new Error('Not authorized');
@@ -692,7 +535,6 @@ function apiProjects(params) {
  *   payload: { rowIndex, ... }
  * }
  */
-
 function apiUpdate(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -713,9 +555,6 @@ function apiUpdate(body) {
     // Read current row to detect designer slot, and to avoid overwriting unrelated columns.
     const rowRange = sh.getRange(rowIndex, 1, 1, sh.getLastColumn());
     const row = rowRange.getValues()[0];
-
-    // ✅ (A) Capture BEFORE snapshot (this is where A goes)
-    const beforeRow = row.slice();
 
     const team = buildTeamFromRow_(row, map);
 
@@ -748,14 +587,6 @@ function apiUpdate(body) {
       row[map[dateHeader]] = nowDate;
 
       rowRange.setValues([row]);
-
-      // ✅ (B) Call notifier AFTER saving (this is where B goes)
-      try {
-        maybeNotifyAfterUpdate_(email, mode, payload, beforeRow, row, map);
-      } catch (err) {
-        Logger.log("Notification error (mine): " + err);
-      }
-
       return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
     }
 
@@ -800,14 +631,6 @@ function apiUpdate(body) {
       }
 
       rowRange.setValues([row]);
-
-      // ✅ (B) notifier
-      try {
-        maybeNotifyAfterUpdate_(email, mode, payload, beforeRow, row, map);
-      } catch (err) {
-        Logger.log("Notification error (pm): " + err);
-      }
-
       return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
     }
 
@@ -827,14 +650,6 @@ function apiUpdate(body) {
       }
 
       rowRange.setValues([row]);
-
-      // ✅ (B) notifier
-      try {
-        maybeNotifyAfterUpdate_(email, mode, payload, beforeRow, row, map);
-      } catch (err) {
-        Logger.log("Notification error (ops): " + err);
-      }
-
       return { ok: true, savedAtDisplay: fmtTime_(nowDate) };
     }
 
@@ -843,8 +658,6 @@ function apiUpdate(body) {
     lock.releaseLock();
   }
 }
-
-
 
 function apiSaveCustomOrder(body) {
   const lock = LockService.getScriptLock();
