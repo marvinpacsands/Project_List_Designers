@@ -587,7 +587,10 @@
             const db = fb.database();
             const updates = {};
             res.generatedNotifications.forEach(n => {
-              updates['notifications/' + n.id] = n;
+              // Sanitize ID in case server sends invalid key (dots)
+              const safeId = String(n.id).replace(/\./g, '_');
+              n.id = safeId;
+              updates['notifications/' + safeId] = n;
             });
             db.ref().update(updates).catch(e => console.error('[Notif] Push failed', e));
           }
