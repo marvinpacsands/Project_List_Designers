@@ -871,7 +871,7 @@ function apiUpdate(body) {
           const timestamp = Date.now();
           
           const newRows = notifs.map(n => {
-             const id = String(timestamp + Math.random());
+             const id = String(timestamp) + "_" + String(Math.floor(Math.random() * 100000));
              return [
                id,
                timestamp,
