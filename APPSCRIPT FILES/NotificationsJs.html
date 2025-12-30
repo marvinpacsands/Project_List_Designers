@@ -1,5 +1,5 @@
 <script>
-    //816
+    //950
 (() => {
     const STATE = {
         boot: null,
@@ -37,20 +37,24 @@
         return STATE.audioCtx;
     }
 
-    function playSound() {
-        try {
-            // Default keeps your original behavior, but allows an override later:
-            // window.NOTIF_SOUND_URL = 'https://raw.githubusercontent.com/.../notification.mp3'
-            const url = window.NOTIF_SOUND_URL || '/sounds/notification.mp3';
-            const audio = new Audio(url);
-            audio.volume = 0.5; // Set volume to 50%
-            audio.play().catch(err => {
-                console.warn('[NOTIF] Could not play sound:', err);
-            });
-        } catch (e) {
-            console.warn('[NOTIF] Audio playback failed:', e);
-        }
+    function playSound(type) {
+    try {
+        const NOTIF_URL = 'https://raw.githubusercontent.com/marvinpacsands/Project_List_Designers/9287e3884c4d3297888aacc47ff47c62969844f8/notification%20tone.mp3';
+        const CONFETTI_URL = 'https://raw.githubusercontent.com/marvinpacsands/Project_List_Designers/9287e3884c4d3297888aacc47ff47c62969844f8/Confetti_Blast.mp3';
+
+        const url = (type === 'confetti') ? CONFETTI_URL : NOTIF_URL;
+
+        const audio = new Audio(url);
+        audio.volume = (type === 'confetti') ? 0.6 : 0.5;
+
+        audio.play().catch(err => {
+        console.warn('[NOTIF] Could not play sound:', err);
+        });
+    } catch (e) {
+        console.warn('[NOTIF] Audio playback failed:', e);
     }
+    }
+
 
     // --- API (GAS + local fallback) ---
     async function apiGetNotifications_(email, name) {
