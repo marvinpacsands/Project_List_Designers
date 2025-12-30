@@ -1,3 +1,4 @@
+// 734
 <script>
 /* ================= GLOBALS & STATE ================= */
 let BOOT = null;
@@ -789,56 +790,10 @@ function autoRefresh() {
 function getActiveEdit() { return document.querySelector('textarea:focus, select:focus'); }
 
 
-// --- IMPERSONATION DROPDOWN ---
-// --- IMPERSONATION DROPDOWN ---
 function renderImpersonator() {
-  let container = document.getElementById('impersonator-container');
-  if (!container) {
-    const header = document.querySelector('.header');
-    if (header) {
-      container = document.createElement('div');
-      container.id = 'impersonator-container';
-      container.style.cssText = "display:flex; align-items:center; margin-left: auto; gap: 8px;";
-      header.appendChild(container); // Append to header flex
-    }
-  }
-
-  if (!container || !GLOBAL_META || !GLOBAL_META.people) return;
-
-  if (!document.getElementById('impersonator-select')) {
-    const label = document.createElement('span');
-    label.innerText = "View As:";
-    label.style.fontSize = '12px';
-    label.style.color = '#ccc';
-
-    const select = document.createElement('select');
-    select.id = 'impersonator-select';
-    select.style.cssText = "background:#334155; color:white; border:1px solid #475569; padding:4px 8px; border-radius:4px; font-size:13px;";
-
-    const sorted = [...GLOBAL_META.people].sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
-
-    const selfOpt = document.createElement('option');
-    selfOpt.value = window.location.pathname;
-    selfOpt.text = 'Reset (Me)';
-    if (!window.location.search.includes('email=')) selfOpt.selected = true;
-    select.appendChild(selfOpt);
-
-    sorted.forEach(u => {
-      const opt = document.createElement('option');
-      const url = u.role.toUpperCase().includes('PM') ? `/pm?email=${u.email}` : `/designer?email=${u.email}`;
-      opt.value = url;
-      opt.text = `${u.name} (${u.role})`;
-      if (window.location.search.includes(u.email)) opt.selected = true;
-      select.appendChild(opt);
-    });
-
-    select.onchange = (e) => {
-      window.location.href = e.target.value;
-    };
-
-    container.appendChild(label);
-    container.appendChild(select);
-  }
+  // Deprecated: local-only testing dropdown.
+  // Admin testing uses the "View as:" bar (buildAdminViewAsBar_ / initAdminViewAs_).
+  return;
 }
 
 function render() {
