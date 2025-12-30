@@ -12,6 +12,16 @@
 //   - apiGetNotifications({ email, name })
 //   - apiAckNotification({ id, email })
 
+// ----------------------------------------------------------------
+// 🚀 SERVER-SIDE DEPLOYMENT VERSION
+// ----------------------------------------------------------------
+const SERVER_DEPLOY_VERSION = "2025-12-30 00:55 - Fix: Sanitize Notification ID (No decimals in Firebase Keys) - Final";
+function logServerVersion() {
+  Logger.log("🚀 RUNNING SERVER VERSION: " + SERVER_DEPLOY_VERSION);
+  console.log("🚀 RUNNING SERVER VERSION: " + SERVER_DEPLOY_VERSION);
+}
+// ----------------------------------------------------------------
+
 /* =========================
    Helpers
 ========================= */
