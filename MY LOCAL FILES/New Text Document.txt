@@ -1,0 +1,3 @@
+V8. this is from antigravitry, be sure to include the node_modules file here "C:\Users\marvinexternal\.gemini\antigravity\scratch\local-dashboard-app\node_modules"
+
+V9.6. all notifications are tested and approved as well as the confetti for when a project is completed.

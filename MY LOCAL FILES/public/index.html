@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Palette */
+      --bg-app: #f1f5f9;
+      --bg-card: #ffffff;
+
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --text-light: #94a3b8;
+
+      --brand: #3b82f6;
+      --brand-soft: #eff6ff;
+
+      --border: #e2e8f0;
+
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+
+      --radius: 12px;
+      --radius-sm: 8px;
+
+      /* Priority Colors (Backgrounds) */
+      --prio-urgent: #fee2e2;
+      /* Red-100 */
+      --prio-high: #ffedd5;
+      /* Orange-100 */
+      --prio-med: #e0f2fe;
+      /* CMYK Cyan-ish (Sky-100) */
+      --prio-low: #fef9c3;
+      /* Yellow-100 */
+      --prio-hold: #f1f5f9;
+      /* Slate-100 */
+      --prio-done: #f0fdf4;
+      /* Green-50 */
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg-app);
+      font-family: 'Inter', sans-serif;
+      color: var(--text-main);
+      padding-bottom: 60px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* Nav / Header */
+    .nav {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: white;
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .brand-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .brand-info h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .brand-info p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Search */
+    .search-bar {
+      position: relative;
+      width: 100%;
+      max-width: 320px;
+    }
+
+    .search-bar svg {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-light);
+      width: 16px;
+    }
+
+    .search-input {
+      width: 100%;
+      height: 40px;
+      padding: 0 12px 0 38px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      font-family: inherit;
+      font-size: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--brand);
+    }
+
+    /* Live Pill */
+    .live-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: white;
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: inline-flex;
+      background: #e2e8f0;
+      padding: 4px;
+      border-radius: var(--radius);
+      gap: 4px;
+    }
+
+    .tab {
+      padding: 6px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: white;
+      color: var(--text-main);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+
+    .tab {
+      position: relative;
+      /* For badge positioning */
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tab-badge {
+      background: #ef4444;
+      /* Clean Red */
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      /* Perfect Circle */
+      display: flex;
+      /* Flex to center content */
+      align-items: center;
+      justify-content: center;
+
+      /* Positioning */
+      position: absolute;
+      top: -6px;
+      right: -8px;
+      z-index: 10;
+
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+
+      /* Reset legacy styles */
+      padding: 0;
+      min-width: 0;
+      white-space: normal;
+      margin-left: 0;
+      flex-shrink: 0;
+      line-height: normal;
+    }
+
+    /* Filters */
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      background: white;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .custom-select {
+      padding: 6px 24px 6px 10px;
+      font-size: 13px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-app);
+      cursor: pointer;
+    }
+
+    /* Stats Bar */
+    .stats-bar {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .stat-pill {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      gap: 6px;
+    }
+
+    .stat-pill b {
+      color: var(--text-main);
+    }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+      gap: 20px;
+    }
+
+    @media (max-width: 600px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Card Styles */
+    .card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.2s;
+      border-left: 4px solid transparent;
+      /* Logic will toggle this or bg */
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Priority Backgrounds */
+    .card.prio-urgent {
+      background-color: #fff1f2;
+      border-left-color: #ef4444;
+    }
+
+    .card.prio-high {
+      background-color: #fff7ed;
+      border-left-color: #f97316;
+    }
+
+    .card.prio-medium {
+      background-color: #f0f9ff;
+      border-left-color: #0ea5e9;
+    }
+
+    .card.prio-low {
+      background-color: #fefce8;
+      border-left-color: #eab308;
+    }
+
+    .card.prio-hold {
+      background-color: #f8fafc;
+      border-left-color: #64748b;
+      opacity: 0.85;
+    }
+
+    .card.prio-done {
+      background-color: #f0fdf4;
+      border-left-color: #22c55e;
+      opacity: 0.9;
+    }
+
+    .card.prio-abandoned {
+      background-color: #fafafa;
+      border-left-color: #9ca3af;
+      opacity: 0.75;
+    }
+
+    /* Folder Card */
+    .folder-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 12px;
+    }
+
+    .folder-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+    }
+
+    .folder-card h3 {
+      margin: 0 0 8px 0;
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .folder-card p {
+      margin: 0;
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .folder-card.expanded h3::after {
+      content: '▼';
+      font-size: 12px;
+    }
+
+    .folder-card:not(.expanded) h3::after {
+      content: '▶';
+      font-size: 12px;
+    }
+
+    .folder-contents {
+      display: none;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .folder-card.expanded .folder-contents {
+      display: block;
+    }
+
+    /* Condensed Mode */
+    .card.condensed {
+      height: 56px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .card.condensed .card-body,
+    .card.condensed .card-footer {
+      display: none;
+    }
+
+    .card.condensed .card-top {
+      border-bottom: none;
+      align-items: center;
+      height: 100%;
+      padding: 0 16px;
+    }
+
+    .card.condensed:hover {
+      opacity: 1;
+      transform: none;
+      background: #fff;
+    }
+
+    /* Hover reveal hint? */
+
+    /* Card Inner */
+    .card-top {
+      padding: 16px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .project-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+
+    .project-title a {
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .project-title a:hover {
+      text-decoration: underline;
+    }
+
+    .project-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .pm-tag {
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .priority-tag {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.5);
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .status-badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: #e2e8f0;
+      color: #475569;
+      border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .card-body {
+      padding: 16px;
+    }
+
+    .pm-note {
+      background: rgba(255, 255, 255, 0.6);
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+
+    /* Inputs */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width:450px) {
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .input-field,
+    .textarea-field {
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 13px;
+      background: white;
+      font-family: inherit;
+      /* Fixes "funny font" issue */
+    }
+
+    /* Global reset for form elements */
+    input,
+    button,
+    select,
+    textarea,
+    optgroup,
+    option {
+      font-family: 'Inter', sans-serif !important;
+    }
+
+    .input-field.error {
+      border-color: #ef4444;
+      background: #fef2f2;
+    }
+
+    /* Team */
+    /* Team Section Grid */
+    .team-section {
+      margin-top: 16px;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+    }
+
+    .team-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .team-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 80px;
+    }
+
+    .tm-header {
+      font-weight: 700;
+      color: var(--text-main);
+      font-size: 13px;
+      margin-bottom: 2px;
+    }
+
+    .tm-meta {
+      color: var(--text-muted);
+      font-size: 10px;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .tm-body {
+      color: var(--text-color);
+      line-height: 1.4;
+      flex: 1;
+    }
+
+    .tm-empty {
+      opacity: 0.5;
+      font-style: italic;
+    }
+
+    .team-list {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .team-member {
+      background: rgba(255, 255, 255, 0.5);
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      border-radius: 6px;
+      padding: 6px;
+    }
+
+    .tm-name {
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tm-note {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Footer */
+    .card-footer {
+      padding: 10px 16px;
+      background: rgba(248, 250, 252, 0.5);
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .sync-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #cbd5e1;
+      display: inline-block;
+      margin-right: 4px;
+    }
+
+    .sync-dot.saving {
+      background: #3b82f6;
+      animation: pulse 1s infinite;
+    }
+
+    .sync-dot.saved {
+      background: #10b981;
+    }
+
+    @keyframes pulse {
+      0% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+
+      100% {
+        opacity: 1;
+      }
+    }
+
+    /* Archive Side Panel (Drawer) */
+    .side-panel-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 2000;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease;
+    }
+
+    .side-panel-overlay.open {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .side-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 400px;
+      max-width: 90vw;
+      background: #f8fafc;
+      z-index: 2001;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      box-shadow: -5px 0 25px rgba(0, 0, 0, 0.15);
+    }
+
+    .side-panel.open {
+      transform: translateX(0);
+    }
+
+    .sp-header {
+      padding: 20px;
+      background: white;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .sp-header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .sp-close {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+
+    .sp-content {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    /* Archive Item (Compact) */
+    .archive-item {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      transition: all 0.2s ease;
+    }
+
+    .archive-item:hover {
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      border-color: #cbd5e1;
+    }
+
+    .archive-summary {
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .archive-summary-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .archive-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .archive-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .archive-details {
+      display: none;
+      padding: 16px;
+      border-top: 1px solid var(--border);
+      background: #f8fafc;
+    }
+
+    .archive-item.expanded .archive-details {
+      display: block;
+    }
+
+    .archive-item.expanded {
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      border-color: #94a3b8;
+    }
+
+    .archive-item.expanded .archive-summary {
+      background: #f1f5f9;
+    }
+
+    /* Reuse badges but make them smaller in summary */
+    .archive-badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .archive-container {
+      display: flex;
+      justify-content: center;
+      /* Neat and centered? Or flex-start? User said "neat". Centered is usually safe, or flex-end. Let's do flex-start to align with grid flow but separate. */
+      margin-bottom: 16px;
+      min-height: 60px;
+      /* Reserve space to prevent layout shift? No, auto is fine. */
+    }
+
+    .archive-folder-top {
+      /* Removed grid-column */
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 50px;
+      /* Pill shape for "neatness" */
+      display: inline-flex;
+      /* Compact */
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s, box-shadow 0.2s;
+      gap: 16px;
+      min-width: 280px;
+    }
+
+    .archive-folder-top:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .archive-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .archive-icon {
+      font-size: 20px;
+    }
+
+    .archive-text h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .archive-text p {
+      margin: 0;
+      font-size: 11px;
+      opacity: 0.9;
+    }
+
+    .archive-arrow {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    /* Tooltip Styles */
+    .designer-tooltip {
+      position: absolute;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+      z-index: 99999;
+      width: 300px;
+      pointer-events: none;
+      display: none;
+      color: #f1f5f9;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+    }
+
+    .tooltip-header {
+      background: #0f172a;
+      padding: 8px 12px;
+      font-weight: 700;
+      color: #94a3b8;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #334155;
+    }
+
+    .tooltip-list {
+      padding: 4px 0;
+    }
+
+    .tooltip-row {
+      display: flex;
+      align-items: center;
+      padding: 6px 12px;
+      gap: 10px;
+      border-bottom: 1px solid #334155;
+    }
+
+    .tooltip-row:last-child {
+      border-bottom: none;
+    }
+
+    .tt-prio {
+      background: #3b82f6;
+      color: white;
+      font-weight: 700;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      min-width: 24px;
+      text-align: center;
+    }
+
+    .tt-num {
+      color: #94a3b8;
+      font-family: monospace;
+    }
+
+    .tt-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+  </style>
+
+  <link rel="stylesheet" href="css/notifications.css">
+</head>
+
+<body>
+  <div id="toast-container"></div>
+  <script src="js/animations.js"></script>
+  <script src="js/notifications.js"></script>
+
+  <div class="container">
+    <!-- Header -->
+    <div class="nav">
+      <div class="header">
+        <div class="brand">
+          <div class="brand-logo"><img id="logoImg" src="" alt="logo"></div>
+          <div class="brand-info">
+            <h1 id="pageTitle">My Projects</h1>
+            <p id="whoami">Loading...</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <div class="search-bar">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input type="text" id="q" class="search-input" placeholder="Search..." autocomplete="off">
+          </div>
+          <div class="live-indicator" id="livePill"><span class="live-dot"></span> <span id="liveText">Live</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabs" id="tabs" style="display:none;">
+        <button class="tab" id="tabMine">Designer View</button>
+        <button class="tab" id="tabPM">PM View</button>
+        <button class="tab" id="tabOps">Operational View</button>
+      </div>
+
+      <!-- Stats Bar -->
+      <div class="stats-bar" id="statsBar">
+        <!-- Will be populated by JS -->
+      </div>
+
+      <div class="filters" id="mineFilters" style="display:none;">
+        <select id="mineSort" class="custom-select">
+          <option value="smart">Smart Sort (Priority)</option>
+          <option value="projectno">Project #</option>
+          <option value="lastmod">Recently Updated</option>
+        </select>
+        <select id="minePMFilter" class="custom-select">
+          <option value="">All PMs</option>
+        </select>
+        <select id="mineStatus" class="custom-select">
+          <option value="">All Statuses</option>
+        </select>
+      </div>
+
+
+      <div class="filters" id="pmFilters" style="display:none;">
+        <select id="pmSelect" class="custom-select"></select>
+        <select id="pmSort" class="custom-select">
+          <option value="maxPrioAsc" selected>Max Priority (High → Low)</option>
+          <option value="maxPrioDesc">Max Priority (Low → High)</option>
+          <option value="customSort">Custom Sort</option>
+        </select>
+        <select id="pmStatusFilter" class="custom-select"></select>
+        <select id="pmDesignerFilter" class="custom-select"></select>
+        <button id="btnDesignerMode"
+          style="padding:6px 12px; border:1px solid var(--border); background:white; border-radius:6px; font-size:12px; cursor:pointer;">Designer
+          View</button>
+      </div>
+
+      <div class="filters" id="opsFilters" style="display:none;">
+        <input type="text" id="opsSearch" class="search-input" placeholder="Search Projects..." style="width:200px;">
+        <select id="opsPMFilter" class="custom-select"></select>
+        <select id="opsDesignerFilter" class="custom-select"></select>
+        <select id="opsPriorityFilter" class="custom-select"></select>
+        <select id="opsStatusFilter" class="custom-select"></select>
+        <label style="font-size:13px; font-weight:500; color:var(--text-muted); display:flex; align-items:center;">
+          <input type="checkbox" id="includeUnassigned" checked style="margin-right:6px;"> Include unassigned
+        </label>
+      </div>
+    </div>
+
+    <div id="archiveContainer" class="archive-container"></div>
+    <div id="mineGrid" class="grid"></div>
+    <div id="pmGrid" class="grid" style="display:none;"></div>
+    <div id="opsGrid" class="grid" style="display:none;"></div>
+    <div id="empty" style="display:none; text-align:center; padding:40px; color:var(--text-muted);">No projects found.
+    </div>
+
+    <!-- Side Panel & Overlay -->
+    <div class="side-panel-overlay" id="sidePanelOverlay" onclick="closeSidePanel()"></div>
+    <div class="side-panel" id="archivePanel">
+      <div class="sp-header">
+        <h2>Archive</h2>
+        <button class="sp-close" onclick="closeSidePanel()">×</button>
+      </div>
+      <div class="sp-content" id="archiveContent">
+        <!-- Archive cards go here -->
+      </div>
+    </div>
+
+    <!-- Sleek Side Trigger -->
+    <div id="archiveTrigger" class="archive-trigger" onclick="/* Open logic handled via JS updates */">
+      <div style="font-size: 16px;">📂</div>
+      <div
+        style="writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg); margin-top: 8px; font-weight: 600; font-size: 12px; letter-spacing: 0.05em;">
+        ARCHIVE</div>
+      <div id="archiveTriggerCount"
+        style="margin-top: 8px; background: white; color: var(--primary); font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 4px;">
+        0</div>
+    </div>
+
+    <!-- Additional Styles for Trigger -->
+    <style>
+      .archive-trigger {
+        position: fixed;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        background: var(--primary);
+        /* Blue */
+        color: white;
+        padding: 12px 8px;
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+        box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+        display: none;
+        /* Hidden by default */
+        flex-direction: column;
+        align-items: center;
+        z-index: 999;
+        transition: transform 0.2s ease, background 0.2s;
+      }
+
+      .archive-trigger:hover {
+        transform: translateY(-50%) translateX(-2px);
+        background: var(--primary-dark);
+      }
+
+      /* Condensed Archive Card Styles */
+      .archive-card {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 8px;
+        transition: box-shadow 0.2s;
+        cursor: pointer;
+        /* Clickable */
+      }
+
+      .archive-card:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      }
+
+      .ac-title {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--text-heading);
+        line-height: 1.3;
+        margin-bottom: 4px;
+      }
+
+      .ac-meta {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+
+      .ac-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .ac-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        color: white;
+        font-weight: 600;
+      }
+
+      .ac-pm {
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      /* Sticky Alerts */
+      #sticky-alerts {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        z-index: 2000;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .sticky-alert {
+        background: #ef4444;
+        color: white;
+        padding: 12px 20px;
+        font-weight: 600;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .sticky-alert.warning {
+        background: #f59e0b;
+        color: #fff;
+      }
+
+      .sticky-alert button {
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+
+      .input-incomplete {
+        border: 2px solid #ef4444 !important;
+        background-color: #fff4f4 !important;
+      }
+
+
+      .sticky-alert button:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+
+      /* Inline Accordion Styles */
+      .ac-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 8px;
+      }
+
+      /* Heartbeat Animation */
+      @keyframes heartbeat {
+        0% {
+          background: rgba(239, 68, 68, 0.95);
+          transform: scale(1);
+          box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+        }
+
+        50% {
+          background: rgba(220, 38, 38, 1);
+          transform: scale(1.02);
+          box-shadow: 0 0 20px 10px rgba(239, 68, 68, 0);
+        }
+
+        100% {
+          background: rgba(239, 68, 68, 0.95);
+          transform: scale(1);
+          box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+        }
+      }
+
+      .sticky-alert.warning {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        color: white;
+        border: 1px solid #b91c1c;
+        animation: heartbeat 2s infinite ease-in-out;
+        box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+        font-weight: bold;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      }
+
+      .btn-unassigned-flash {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        color: white;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        border: 1px solid #b91c1c;
+        cursor: pointer;
+        animation: heartbeat 2s infinite ease-in-out;
+        margin-left: 12px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      .btn-unassigned-flash:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      }
+
+      .banner-exit-btn {
+        background: white;
+        color: #ef4444;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+      }
+
+      .ac-meta-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .ac-details {
+        display: none;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px dashed var(--border);
+        animation: slideDown 0.2s ease-out;
+      }
+
+      .archive-card.expanded .ac-details {
+        display: block;
+      }
+
+      .archive-card.expanded {
+        background: #f8fafc;
+        /* Slightly darker to indicate active */
+        border-color: var(--primary);
+      }
+
+      .ac-detail-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 4px;
+        font-size: 12px;
+      }
+
+      .ac-label {
+        color: var(--text-muted);
+      }
+
+      .ac-val {
+        color: var(--text-heading);
+        font-weight: 500;
+      }
+
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Drag and Drop Sorting */
+      .draggable-card {
+        cursor: grab;
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+
+      .draggable-card:active {
+        cursor: grabbing;
+      }
+
+      .dragging {
+        opacity: 0.5;
+        transform: scale(0.98);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      }
+
+      .drag-over {
+        border: 2px dashed var(--brand);
+        transform: translateY(4px);
+      }
+    </style>
+    </style>
+  </div>
+
+  <div id="sticky-alerts"></div>
+
+  <script src="/js/notifications.js?v=20"></script>
+  <script src="js/core.js?v=3"></script>
+  <script src="js/mine.js?v=8"></script>
+  <script src="js/pm.js?v=14"></script>
+  <script src="js/ops.js"></script>
+  <script>
+    // Initialize after load
+    window.addEventListener('DOMContentLoaded', () => {
+      if (typeof init === 'function') init();
+      // Init Notifications
+      if (window.Notif) setTimeout(() => window.Notif.init(), 1000);
+    });
+  </script>
+</body>
+
+</html>
