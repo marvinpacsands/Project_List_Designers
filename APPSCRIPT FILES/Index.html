@@ -942,10 +942,32 @@
 
   <?!= include('NotificationsCss'); ?>
   <script>
-  window.currentUser = <?!= currentUserJson ?>;
-  window.WEBAPP_URL = <?!= JSON.stringify(webAppUrl) ?>;
-  console.log('Logged in as:', window.currentUser);
-</script>
+    window.currentUser = <?!= currentUserJson ?>;
+    window.WEBAPP_URL = <?!= JSON.stringify(webAppUrl) ?>;
+    console.log('Logged in as:', window.currentUser);
+  </script>
+
+  <!-- FIREBASE SDK (Added 2025-12-29) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script>
+    // TODO: PASTE YOUR FIREBASE CONFIG HERE
+    const firebaseConfig = {
+      apiKey: "AIzaVy...",
+      authDomain: "your-project.firebaseapp.com",
+      databaseURL: "https://your-project.firebaseio.com",
+      projectId: "your-project",
+      storageBucket: "your-project.appspot.com",
+      messagingSenderId: "123...",
+      appId: "1:..."
+    };
+
+    // Initialize Firebase
+    if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+      console.log('[Firebase] Initialized');
+    }
+  </script>
 
 </head>
 

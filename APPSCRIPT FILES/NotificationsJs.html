@@ -79,45 +79,55 @@
             });
         }
 
+        // Helper to process raw notification list
+        function processNotifications(data) {
+            const { email } = getUser_();
+            // Filter logic (optional client-side filter if reading from public list)
+            // But we assume 'data' is relevant to us or we filter here:
+            // const myData = data.filter(...) 
+            // For now, assume 'data' is the full list and we check 'readBy' for unread status
+
+            // Check for NEW unread items
+            const userEmail = email;
+            const newUnread = (data || []).filter(item => !item.readBy?.includes(userEmail));
+            const oldUnread = (STATE.history || []).filter(item => !item.readBy?.includes(userEmail));
+
+            // Detect if there are any NEW notifications (not just unread but actually NEW)
+            if (newUnread.length > oldUnread.length) {
+                // Find the truly new ones by comparing IDs
+                const oldIds = new Set((STATE.history || []).map(n => n.id));
+                const brandNew = newUnread.filter(n => !oldIds.has(n.id));
+
+                // Show immediate popups for brand new notifications
+                brandNew.forEach(notif => {
+                    showImmediateNotification(notif);
+                });
+
+                // Sound Logic
+                if (brandNew.length > 0) {
+                    const hasCompletion = brandNew.some(n =>
+                        n.type === 'COMPLETED_MODAL' ||
+                        n.type === 'CONFETTI' ||
+                        (n.status && (n.status.includes('Approved - Construction') || n.status.includes('Completed - Sent')))
+                    );
+                    playSound(hasCompletion ? 'confetti' : 'default');
+                }
+            }
+
+            STATE.history = data || [];
+            renderInbox();
+            updateFabCount();
+            renderActiveToasts(); // Update toast area
+            updateBadges();       // Update tab badges
+        }
+
         async function fetchNotifications() {
             const { email, name } = getUser_();
             if (!email) return;
 
             try {
                 const data = await apiGetNotifications_(email, name);
-
-                // Check for NEW unread items
-                const userEmail = email;
-                const newUnread = (data || []).filter(item => !item.readBy?.includes(userEmail));
-                const oldUnread = (STATE.history || []).filter(item => !item.readBy?.includes(userEmail));
-
-                // Detect if there are any NEW notifications (not just unread but actually NEW)
-                if (newUnread.length > oldUnread.length) {
-                    // Find the truly new ones by comparing IDs
-                    const oldIds = new Set((STATE.history || []).map(n => n.id));
-                    const brandNew = newUnread.filter(n => !oldIds.has(n.id));
-
-                    // Show immediate popups for brand new notifications
-                    brandNew.forEach(notif => {
-                        showImmediateNotification(notif);
-                    });
-
-                    // Sound Logic
-                    if (brandNew.length > 0) {
-                        const hasCompletion = brandNew.some(n =>
-                            n.type === 'COMPLETED_MODAL' ||
-                            n.type === 'CONFETTI' ||
-                            (n.status && (n.status.includes('Approved - Construction') || n.status.includes('Completed - Sent')))
-                        );
-                        playSound(hasCompletion ? 'confetti' : 'default');
-                    }
-                }
-
-                STATE.history = data || [];
-                renderInbox();
-                updateFabCount();
-                renderActiveToasts(); // Update toast area
-                updateBadges();       // Update tab badges
+                processNotifications(data);
             } catch (e) {
                 console.error('Notif Fetch Error', e);
             }
@@ -699,11 +709,35 @@
 
                 createInbox();
                 createToastContainer();
-                fetchNotifications();
 
-                // ✅ Extra safety: store timer id so it can’t accidentally double-start
-                if (STATE._pollTimer) clearInterval(STATE._pollTimer);
-                STATE._pollTimer = setInterval(fetchNotifications, STATE.pollingInterval);
+                // --- FIREBASE INTEGRATION (2025-12-29) ---
+                if (typeof firebase !== 'undefined' && firebase.apps.length) {
+                    console.log('[Fire] Starting Realtime Listener...');
+                    try {
+                        const db = firebase.database();
+                        // Listen to 'notifications' node
+                        db.ref('notifications').on('value', (snap) => {
+                            const val = snap.val();
+                            // Convert object {id: {}, id2: {}} to array [{}, {}]
+                            const list = val ? Object.values(val) : [];
+                            console.log('[Fire] Received update:', list.length);
+                            processNotifications(list);
+                        });
+                        // Also fetch once immediately to be safe
+                        // fetchNotifications(); 
+                    } catch (e) {
+                        console.error('[Fire] Error attached listener:', e);
+                        // Fallback
+                        fetchNotifications();
+                        if (STATE._pollTimer) clearInterval(STATE._pollTimer);
+                        STATE._pollTimer = setInterval(fetchNotifications, STATE.pollingInterval);
+                    }
+                } else {
+                    // Fallback: Standard Polling
+                    console.log('[Notif] Firebase NOT found. Using polling.');
+                    fetchNotifications();
+                    STATE._pollTimer = setInterval(fetchNotifications, STATE.pollingInterval);
+                }
             },
 
             requestPermission: () => {
