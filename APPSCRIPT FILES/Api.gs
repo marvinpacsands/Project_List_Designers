@@ -1,5 +1,5 @@
 // Api.gs
-// 605
+// 635
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -839,31 +839,53 @@ function apiSaveCustomOrder(body) {
 function getNotificationsSheetMap_() {
   const sh = getSheet_(CFG.SHEET_NOTIFICATIONS);
 
-  // We’ll store notifications in a schema compatible with your old db.json objects.
+  // Matches local notification objects + optional fields used by completed modal.
   const required = [
     "id",
-    "createdAt",      // ms
-    "readByJson",     // JSON array string
-    "targetRole",     // 'PM' | 'DESIGNER' | 'ANY'
-    "targetName",     // name or email (optional if ANY)
+    "createdAt",        // ms
+    "readByJson",       // JSON array string
+    "targetRole",       // 'PM' | 'DESIGNER' | 'ANY'
+    "targetName",       // name/email (can be comma-separated)
     "title",
-    "body",           // HTML string
-    "projectNumber"
+    "body",             // HTML string
+    "projectNumber",
+
+    // Optional local fields
+    "type",
+    "projectName",
+    "status",
+    "teamJson",
+    "hideViewButton"
   ];
 
   const map = ensureColumns_(sh, required);
   return { sh, map };
 }
 
+
 function apiGetNotifications(params) {
   const email = assertDomain_((params && params.email) || getMyEmail_());
   const name = String((params && params.name) || "").trim();
+
+  const emailNorm = normalize_(email);
+  const nameNorm = normalize_(name);
 
   const { sh, map } = getNotificationsSheetMap_();
   const values = sh.getDataRange().getValues();
   if (values.length < 2) return [];
 
   const out = [];
+
+  const splitTargets = (v) =>
+    String(v || "")
+      .split(",")
+      .map(x => String(x || "").trim())
+      .filter(Boolean);
+
+  const truthy = (v) => {
+    const s = String(v == null ? "" : v).trim().toLowerCase();
+    return s === "true" || s === "1" || s === "yes";
+  };
 
   for (let r = 1; r < values.length; r++) {
     const row = values[r];
@@ -872,39 +894,62 @@ function apiGetNotifications(params) {
 
     const createdAt = Number(row[map["createdAt"]] || 0);
     const readBy = safeJsonParse_(row[map["readByJson"]], []);
-    const targetRole = String(row[map["targetRole"]] || "ANY").toUpperCase();
-    const targetName = String(row[map["targetName"]] || "");
+    const readArr = Array.isArray(readBy) ? readBy : [];
+
+    // Match local: return only notifications meant for this user AND not already read by them
+    if (readArr.map(normalize_).includes(emailNorm)) continue;
+
+    const targetRoleRaw = String(row[map["targetRole"]] || "ANY").trim();
+    const targetRole = targetRoleRaw ? targetRoleRaw.toUpperCase() : "ANY";
+
+    const targetName = String(row[map["targetName"]] || "").trim();
+    const targets = splitTargets(targetName).map(normalize_);
+
+    const matchesName = targets.length
+      ? (targets.includes(nameNorm) || targets.includes(emailNorm))
+      : false;
+
+    const matchesTarget =
+      (targetRole === "ANY" && (!targetName || matchesName)) ||
+      (targetRole === "PM" && matchesName) ||
+      (targetRole === "DESIGNER" && matchesName) ||
+      (targetRole !== "ANY" && targetRole !== "PM" && targetRole !== "DESIGNER" && matchesName);
+
+    if (!matchesTarget) continue;
+
     const title = String(row[map["title"]] || "");
     const body = String(row[map["body"]] || "");
     const projectNumber = String(row[map["projectNumber"]] || "");
 
-    // unread?
-    if (Array.isArray(readBy) && readBy.includes(email)) continue;
-
-    const tNorm = normalize_(targetName);
-    const matchesName = tNorm && (tNorm === normalize_(name) || tNorm === normalize_(email));
-    const roleOk =
-      (targetRole === "ANY" && (!targetName || matchesName)) ||
-      (targetRole === "PM" && matchesName) ||
-      (targetRole === "DESIGNER" && matchesName);
-
-    if (!roleOk) continue;
+    const type = String(row[map["type"]] || "");
+    const projectName = String(row[map["projectName"]] || "");
+    const status = String(row[map["status"]] || "");
+    const team = safeJsonParse_(row[map["teamJson"]], []);
+    const hideViewButton = truthy(row[map["hideViewButton"]]);
 
     out.push({
       id: String(id),
       createdAt: createdAt,
-      readBy: Array.isArray(readBy) ? readBy : [],
-      targetRole,
+      readBy: readArr,
+      targetRole: targetRoleRaw || "ANY",
       targetName,
       title,
       body,
-      projectNumber
+      projectNumber,
+
+      // Optional fields (local UI uses these if present)
+      type,
+      projectName,
+      status,
+      team: Array.isArray(team) ? team : [],
+      hideViewButton
     });
   }
 
   out.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return out;
 }
+
 
 function apiAckNotification(body) {
   const lock = LockService.getScriptLock();
