@@ -643,6 +643,13 @@ async function savePM(idx, card) {
 
   call.then(res => {
     if (msg) msg.textContent = 'Upd ' + (res && res.savedAtDisplay ? res.savedAtDisplay : '');
+
+    // ✅ Step 2: Doorbell ping (tiny) — only if server generated notifications
+    if (res && res.generatedNotifications && res.generatedNotifications.length > 0) {
+      if (window.FB && typeof FB.ringNotifications === 'function') {
+        FB.ringNotifications(res.generatedNotifications);
+      }
+    }
   }).catch(e => {
     console.error(e);
     if (msg) msg.textContent = 'Error';
