@@ -1,5 +1,5 @@
 <script>
-// 550
+// 624
 /* ================= GLOBALS & STATE ================= */
 let BOOT = null;
 let MINE_ROWS = [], PM_ROWS = [], OPS_ROWS = [];
@@ -73,10 +73,12 @@ function gasCall(fnName, arg) {
   });
 }
 
-/* ================= FIREBASE DOORBELL (STEP 2) =================
-   - NO listeners yet (Step 3)
-   - NO big payload writes
-   - Only tiny timestamp pings: signals/notif/<userKey> = serverTimestamp
+
+/* ================= FIREBASE DOORBELL (NOTIFS + PROJECTS) =================
+   - Still NO streaming data
+   - Only tiny pings:
+       signals/notif/<key> = timestamp
+       signals/proj/<key>  = timestamp
 */
 window.FB = window.FB || (() => {
   const state = { inited: false, enabled: false };
@@ -89,7 +91,6 @@ window.FB = window.FB || (() => {
       if (!window.FIREBASE_ENABLED) throw new Error('FIREBASE_ENABLED is false');
       if (!window.firebase) throw new Error('Firebase SDK not loaded');
 
-      // Initialize app if not already
       if ((!firebase.apps || !firebase.apps.length) && window.FIREBASE_CONFIG) {
         firebase.initializeApp(window.FIREBASE_CONFIG);
       }
@@ -109,7 +110,6 @@ window.FB = window.FB || (() => {
     return firebase.database ? firebase.database() : null;
   }
 
-  // make a stable Firebase path key from either email or name
   function safeKey(v) {
     return String(v || '')
       .toLowerCase()
@@ -120,53 +120,58 @@ window.FB = window.FB || (() => {
       .replace(/_+/g, '_');
   }
 
-  function targetsFromGenerated_(generatedNotifications) {
+  function normalizeTargets_(list) {
     const out = new Set();
-    (generatedNotifications || []).forEach(n => {
-      const raw =
-        (n && (n.targetName || n.target || n.to || n.email || n.recipientEmail || '')) || '';
-      String(raw)
+    (list || []).forEach(v => {
+      String(v || '')
         .split(',')
         .map(s => s.trim())
         .filter(Boolean)
-        .forEach(t => out.add(t));
+        .forEach(s => out.add(s));
     });
     return Array.from(out);
   }
 
-  // Tiny “doorbell ping” for each recipient in generatedNotifications
-  function ringNotifications(generatedNotifications) {
+  function ring_(prefix, targets) {
     const database = db();
     if (!database) return Promise.resolve(false);
 
-    const targets = targetsFromGenerated_(generatedNotifications);
-    if (!targets.length) return Promise.resolve(false);
+    const t = normalizeTargets_(targets);
+    if (!t.length) return Promise.resolve(false);
 
     const ts = firebase.database.ServerValue.TIMESTAMP;
     const updates = {};
 
-    targets.forEach(t => {
-      const k = safeKey(t);
+    t.forEach(x => {
+      const k = safeKey(x);
       if (!k) return;
-      updates[`signals/notif/${k}`] = ts;
+      updates[`signals/${prefix}/${k}`] = ts;
     });
 
-    // optional global bell (tiny)
-    updates['signals/notif/_global'] = ts;
+    // optional global bell (tiny). No one has to listen to it.
+    updates[`signals/${prefix}/_global`] = ts;
 
     return database.ref().update(updates)
       .then(() => true)
       .catch(err => {
-        console.warn('[Firebase] ringNotifications failed:', err);
+        console.warn(`[Firebase] ring ${prefix} failed:`, err);
         return false;
       });
   }
 
-  return { init, db, safeKey, ringNotifications };
+  function ringNotifications(generatedNotifications) {
+    // Pull targets from generatedNotifications.targetName (your backend uses targetName)
+    const targets = [];
+    (generatedNotifications || []).forEach(n => targets.push(n && n.targetName));
+    return ring_('notif', targets);
+  }
+
+  function ringProjects(targets) {
+    return ring_('proj', targets);
+  }
+
+  return { init, db, safeKey, ringNotifications, ringProjects };
 })();
-
-
-
 
 
 
@@ -676,7 +681,18 @@ function saveRow(idx, view) {
       if (dot) { dot.className = 'sync-dot saved'; setTimeout(() => dot.className = 'sync-dot', 2000); }
       if (msg) { msg.textContent = 'Upd ' + (res && res.savedAtDisplay ? res.savedAtDisplay : ''); }
 
-      // ✅ STEP 2: tiny doorbell ping only (no big writes)
+      // ✅ STEP 4: ring PROJECTS bell (tiny)
+      const targets = [];
+      if (r && r.pmName) targets.push(r.pmName);
+      if (r && Array.isArray(r.team)) r.team.forEach(t => targets.push(t && t.name));
+      // include self (helps if others target by email)
+      if (window.currentUser && window.currentUser.email) targets.push(window.currentUser.email);
+
+      if (window.FB && typeof FB.ringProjects === 'function') {
+        FB.ringProjects(targets);
+      }
+
+      // ✅ If backend generated notifications, ring NOTIF bell too
       if (res && res.generatedNotifications && res.generatedNotifications.length > 0) {
         if (window.FB && typeof FB.ringNotifications === 'function') {
           FB.ringNotifications(res.generatedNotifications);
@@ -691,9 +707,90 @@ function saveRow(idx, view) {
 }
 
 
+
 function debounceSave(idx, view) {
   clearTimeout(saveTimers[idx]);
   saveTimers[idx] = setTimeout(() => saveRow(idx, view), 1000);
+}
+/* ================= PROJECT DOORBELL LISTENER (STEP 4) ================= */
+const __projDoorbell = {
+  unsubs: [],
+  last: {},
+  timer: null,
+  pending: false,
+  debounceMs: 650,
+  visHooked: false
+};
+
+function stopProjectDoorbell_() {
+  (__projDoorbell.unsubs || []).forEach(fn => { try { fn(); } catch(e){} });
+  __projDoorbell.unsubs = [];
+}
+
+function queueProjectRefresh_() {
+  if (document.hidden) {
+    __projDoorbell.pending = true;
+    return;
+  }
+  clearTimeout(__projDoorbell.timer);
+  __projDoorbell.timer = setTimeout(() => {
+    autoRefresh();
+  }, __projDoorbell.debounceMs);
+}
+
+function startProjectDoorbell_() {
+  try {
+    if (!window.FIREBASE_ENABLED) return;
+    if (!window.FB || typeof FB.db !== 'function') return;
+
+    const database = FB.db();
+    if (!database) return;
+
+    const email = (window.currentUser && window.currentUser.email) || '';
+    const name  = (BOOT && BOOT.name) || (window.currentUser && window.currentUser.name) || '';
+
+    const sk = (window.FB && typeof FB.safeKey === 'function') ? FB.safeKey : (v => String(v || '').toLowerCase());
+    const keys = Array.from(new Set([email, name].filter(Boolean).map(sk))).filter(Boolean);
+    if (!keys.length) return;
+
+    stopProjectDoorbell_();
+
+    keys.forEach(k => {
+      const ref = database.ref('signals/proj/' + k);
+
+      const handler = (snap) => {
+        const v = snap.val();
+
+        // Prime: ignore first snapshot to avoid instant refresh on load
+        if (__projDoorbell.last[k] === undefined) {
+          __projDoorbell.last[k] = v;
+          return;
+        }
+
+        if (v === __projDoorbell.last[k]) return;
+        __projDoorbell.last[k] = v;
+
+        queueProjectRefresh_();
+      };
+
+      ref.on('value', handler);
+      __projDoorbell.unsubs.push(() => ref.off('value', handler));
+    });
+
+    if (!__projDoorbell.visHooked) {
+      __projDoorbell.visHooked = true;
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && __projDoorbell.pending) {
+          __projDoorbell.pending = false;
+          autoRefresh();
+        }
+      });
+    }
+
+    console.log('[Projects] Doorbell listening on:', keys);
+  } catch (e) {
+    console.warn('[Projects] Doorbell failed:', e);
+  }
 }
 
 function init() {
@@ -722,6 +819,13 @@ function init() {
   apiBootstrapClient(email)
     .then(b => {
       BOOT = b;
+      // Ensure Firebase helper is initialized (safe)
+      if (window.FIREBASE_ENABLED && window.FB && typeof FB.init === 'function') {
+        try { FB.init(); } catch (e) {}
+      }
+      // Start listening for project changes (Step 4)
+      startProjectDoorbell_();
+
       if (window.FIREBASE_ENABLED && window.FB && typeof FB.init === 'function') {
         try { FB.init(); } catch (e) {}
       }
@@ -829,7 +933,9 @@ function init() {
 
       // 8s feels much less “jittery” while still “live”
       // (we’ll later make this event-driven with Firebase signals)
-      __autoRefreshTimer = setInterval(autoRefresh, 8000);
+      const backupInterval = (window.FIREBASE_ENABLED ? 60000 : 8000); // 60s backup when doorbell is live
+      __autoRefreshTimer = setInterval(autoRefresh, backupInterval);
+
     })
     .catch(err => {
       console.error(err);
