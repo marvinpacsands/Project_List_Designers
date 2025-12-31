@@ -1,5 +1,5 @@
 <script>
-    //602
+    //610
 (() => {
     const STATE = {
         boot: null,
@@ -794,6 +794,12 @@
 
         console.log('[NOTIF] Doorbell listening on:', uniqKeys);
     }
+function reset(mode) {
+  // Re-filter visible toasts and badges based on current tab
+  try { renderActiveToasts(); } catch (e) {}
+  try { updateBadges(); } catch (e) {}
+  try { updateFabCount(); } catch (e) {}
+}
 
     // --- EXPORTS ---
 window.Notif = {
@@ -840,7 +846,7 @@ window.Notif = {
     } catch (e) {}
   },
 
-  reset: () => { /* keep existing behavior */ },
+  reset: reset,
   ack: markAsRead,
   acknowledgeToast: acknowledgeToast,
   viewProject: viewProject,
