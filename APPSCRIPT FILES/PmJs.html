@@ -1,5 +1,5 @@
 <script>
-  //440
+  //632
 function ensureLegacyProjectShape_(p) {
   if (!p) return p;
 
@@ -574,6 +574,11 @@ async function savePM(idx, card) {
     row = window.STICKY_UNASSIGNED.find(r => r.rowIndex === idx);
   }
 
+  // Capture "before" targets so if someone was removed (old PM/designer),
+  // they still get pinged to refresh and see the card disappear.
+  const beforePM = row ? row.pmName : '';
+  const beforeDesigners = (row && Array.isArray(row.team)) ? row.team.map(t => t && t.name) : [];
+
   if (row) {
     const proceed = await confirmPMOverride(BOOT.name, row.pmName);
     if (!proceed) return;
@@ -644,7 +649,19 @@ async function savePM(idx, card) {
   call.then(res => {
     if (msg) msg.textContent = 'Upd ' + (res && res.savedAtDisplay ? res.savedAtDisplay : '');
 
-    // ✅ STEP 2: tiny doorbell ping only (no big writes)
+    // ✅ STEP 4: ring PROJECTS doorbell for anyone affected (tiny ping)
+    // (new + old targets so removed people refresh too)
+    if (window.FB && typeof FB.ringProjects === 'function') {
+      const projTargets = [
+        beforePM, pmAssigned,
+        ...beforeDesigners,
+        d1, d2, d3,
+        (BOOT && BOOT.name) || ''
+      ].filter(Boolean);
+      FB.ringProjects(Array.from(new Set(projTargets)));
+    }
+
+    // Notifications doorbell (only if server generated notifications)
     if (res && res.generatedNotifications && res.generatedNotifications.length > 0) {
       console.log('[Notif] Server generated notifications (PM):', res.generatedNotifications);
       if (window.FB && typeof FB.ringNotifications === 'function') {
@@ -692,7 +709,6 @@ async function executeRemoteShift(pmRowIndex, desSlot, desName, newVal) {
   try {
     document.getElementById('liveText').textContent = 'Shifting...';
 
-    // Build request body (unchanged)
     const body = {
       email: window.currentUser.email,
       mode: 'pm',
@@ -715,7 +731,18 @@ async function executeRemoteShift(pmRowIndex, desSlot, desName, newVal) {
       res = await r.json();
     }
 
-    // ✅ STEP 2: tiny doorbell ping only (no big writes)
+    // ✅ STEP 4: ring PROJECTS doorbell (tiny ping)
+    // This affects the designer’s ordering and PM view.
+    if (window.FB && typeof FB.ringProjects === 'function') {
+      const projTargets = [
+        (BOOT && BOOT.name) || '',
+        desName || '',
+        (window.currentUser && window.currentUser.email) || ''
+      ].filter(Boolean);
+      FB.ringProjects(Array.from(new Set(projTargets)));
+    }
+
+    // Notifications doorbell (only if server generated notifications)
     if (res && res.generatedNotifications && res.generatedNotifications.length > 0) {
       console.log('[Notif] Server generated notifications (Shift):', res.generatedNotifications);
       if (window.FB && typeof FB.ringNotifications === 'function') {
