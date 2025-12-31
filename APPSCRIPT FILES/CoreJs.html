@@ -1,5 +1,5 @@
 <script>
-// 540
+// 550
 /* ================= GLOBALS & STATE ================= */
 let BOOT = null;
 let MINE_ROWS = [], PM_ROWS = [], OPS_ROWS = [];
@@ -168,98 +168,6 @@ window.FB = window.FB || (() => {
 
 
 
-
-window.FB = window.FB || (() => {
-  const state = { inited: false, enabled: false, initError: null };
-
-  function init() {
-    if (state.inited) return state;
-    state.inited = true;
-
-    try {
-      if (!window.FIREBASE_ENABLED) throw new Error('FIREBASE_ENABLED is false');
-      if (!window.firebase) throw new Error('Firebase SDK not loaded');
-
-      // Initialize app if not already
-      if ((!firebase.apps || !firebase.apps.length) && window.FIREBASE_CONFIG) {
-        firebase.initializeApp(window.FIREBASE_CONFIG);
-      }
-
-      state.enabled = true;
-      console.log('[Firebase] Doorbell ready');
-    } catch (e) {
-      state.enabled = false;
-      state.initError = e;
-      console.warn('[Firebase] Doorbell disabled:', (e && e.message) ? e.message : e);
-    }
-    return state;
-  }
-
-  function db() {
-    init();
-    if (!state.enabled) return null;
-    return firebase.database ? firebase.database() : null;
-  }
-
-  function safeKey(email) {
-    return String(email || '')
-      .toLowerCase()
-      .trim()
-      .replace(/[.#$\[\]]/g, '_');
-  }
-
-  // Extract recipient emails from server-generated notifications
-  function recipientsFromGenerated_(generatedNotifications) {
-    const out = new Set();
-
-    (generatedNotifications || []).forEach(n => {
-      const candidate =
-        (n && (n.recipientEmail || n.toEmail || n.email || n.to || n.recipient)) || '';
-
-      // If it’s a comma-separated list, split it
-      String(candidate)
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean)
-        .forEach(v => {
-          // Only keep real emails (prevents mismatched keys)
-          if (v.includes('@')) out.add(v.toLowerCase());
-        });
-    });
-
-    return Array.from(out);
-  }
-
-  // The actual “doorbell”: tiny writes only (timestamps), per recipient
-  function ringNotifications(generatedNotifications) {
-    const database = db();
-    if (!database) return Promise.resolve(false);
-
-    const recipients = recipientsFromGenerated_(generatedNotifications);
-    if (!recipients.length) return Promise.resolve(false);
-
-    const ts = firebase.database.ServerValue.TIMESTAMP;
-    const updates = {};
-
-    recipients.forEach(email => {
-      const k = safeKey(email);
-      if (!k) return;
-      updates[`signals/notif/${k}`] = ts;
-    });
-
-    // Optional global bell (tiny) for debugging / future fallback
-    updates['signals/notif/_global'] = ts;
-
-    return database.ref().update(updates)
-      .then(() => true)
-      .catch(err => {
-        console.warn('[Firebase] ringNotifications failed:', err);
-        return false;
-      });
-  }
-
-  return { init, db, safeKey, ringNotifications, _state: state };
-})();
 
 
 
