@@ -1,5 +1,5 @@
 <script>
-    //447
+    //602
 (() => {
     const STATE = {
         boot: null,
@@ -696,10 +696,107 @@
             removeSticky('pm-compliance');
         }
     }
+    /* ================= FIREBASE DOORBELL LISTENER (STEP 3) =================
+       We listen ONLY to this user’s tiny signal key(s).
+       No big payload reads. No project streaming.
+    */
+
+    function safeKeyLocal_(v) {
+        // fallback if FB.safeKey ever isn’t available
+        return String(v || '')
+            .toLowerCase()
+            .trim()
+            .replace(/[.#$\[\]\/]/g, '_')
+            .replace(/\s+/g, '_')
+            .replace(/[^a-z0-9_@-]/g, '_')
+            .replace(/_+/g, '_');
+    }
+
+    function stopDoorbell_() {
+        if (STATE._doorbellUnsubs && STATE._doorbellUnsubs.length) {
+            STATE._doorbellUnsubs.forEach(fn => { try { fn(); } catch (e) {} });
+        }
+        STATE._doorbellUnsubs = [];
+        STATE._doorbellLast = STATE._doorbellLast || {};
+    }
+
+    function queueFetchFromDoorbell_() {
+        // If tab hidden, don’t fetch; fetch once when user returns
+        if (document.hidden) {
+            STATE._pendingDoorbell = true;
+            return;
+        }
+
+        // Debounce bursts
+        clearTimeout(STATE._doorbellTimer);
+        STATE._doorbellTimer = setTimeout(() => {
+            fetchNotifications();
+        }, STATE._doorbellDebounceMs || 600);
+    }
+
+    function startDoorbell_() {
+        // Only run if Firebase is enabled + FB helper exists
+        if (!window.FIREBASE_ENABLED) return;
+        if (!window.FB || typeof FB.db !== 'function') return;
+
+        const database = FB.db();
+        if (!database) return;
+
+        const { email, name } = getUser_();
+        const sk = (window.FB && typeof FB.safeKey === 'function') ? FB.safeKey : safeKeyLocal_;
+
+        // Listen to BOTH (email + name) so it works no matter what the server targets
+        const keys = [];
+        if (email) keys.push(sk(email));
+        if (name) keys.push(sk(name));
+
+        const uniqKeys = Array.from(new Set(keys)).filter(Boolean);
+        if (!uniqKeys.length) return;
+
+        stopDoorbell_();
+
+        STATE._doorbellLast = STATE._doorbellLast || {};
+        STATE._doorbellUnsubs = [];
+
+        uniqKeys.forEach(k => {
+            const ref = database.ref('signals/notif/' + k);
+
+            const handler = (snap) => {
+                const v = snap.val();
+
+                // Prime: ignore first snapshot to avoid “double fetch” on load
+                if (STATE._doorbellLast[k] === undefined) {
+                    STATE._doorbellLast[k] = v;
+                    return;
+                }
+
+                // Only react to actual changes
+                if (v === STATE._doorbellLast[k]) return;
+                STATE._doorbellLast[k] = v;
+
+                queueFetchFromDoorbell_();
+            };
+
+            ref.on('value', handler);
+            STATE._doorbellUnsubs.push(() => ref.off('value', handler));
+        });
+
+        // Visibility: when user comes back, run one catch-up fetch if needed
+        if (!STATE._visHooked) {
+            STATE._visHooked = true;
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden && STATE._pendingDoorbell) {
+                    STATE._pendingDoorbell = false;
+                    fetchNotifications();
+                }
+            });
+        }
+
+        console.log('[NOTIF] Doorbell listening on:', uniqKeys);
+    }
 
     // --- EXPORTS ---
 window.Notif = {
-  // Accept BOOT (CoreJs calls Notif.init(b))
   init: (boot) => {
     // ✅ Guard: prevent duplicate polling + duplicate UI init
     if (STATE.__inited) return;
@@ -708,7 +805,6 @@ window.Notif = {
     // Capture boot info if provided
     if (boot) {
       STATE.boot = boot;
-      // Make sure currentUser has a name for targeting
       if (window.currentUser) {
         if (!window.currentUser.name && boot.name) window.currentUser.name = boot.name;
         if (!window.currentUser.roles && boot.roles) window.currentUser.roles = boot.roles;
@@ -717,11 +813,24 @@ window.Notif = {
 
     createInbox();
     createToastContainer();
+
+    // First fetch (same as before)
     fetchNotifications();
 
-    // ✅ Extra safety: store timer id so it can’t accidentally double-start
+    // Step 3: Doorbell listener (fast path)
+    try {
+      if (window.FIREBASE_ENABLED && window.FB && typeof FB.init === 'function') {
+        FB.init(); // safe no-op if already inited
+      }
+      startDoorbell_();
+    } catch (e) {
+      console.warn('[NOTIF] Doorbell init failed:', e);
+    }
+
+    // Polling becomes BACKUP when Firebase is enabled
+    const backupInterval = (window.FIREBASE_ENABLED ? 60000 : STATE.pollingInterval); // 60s backup vs 10s normal
     if (STATE._pollTimer) clearInterval(STATE._pollTimer);
-    STATE._pollTimer = setInterval(fetchNotifications, STATE.pollingInterval);
+    STATE._pollTimer = setInterval(fetchNotifications, backupInterval);
   },
 
   requestPermission: () => {
@@ -731,13 +840,14 @@ window.Notif = {
     } catch (e) {}
   },
 
-  reset: () => { },
+  reset: () => { /* keep existing behavior */ },
   ack: markAsRead,
   acknowledgeToast: acknowledgeToast,
   viewProject: viewProject,
   checkCompliance: checkCompliance,
   checkBadges: updateBadges
 };
+
 
 
 })();
