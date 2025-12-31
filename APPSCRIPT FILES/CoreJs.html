@@ -1,5 +1,5 @@
 <script>
-// 256
+// 346
 /* ================= GLOBALS & STATE ================= */
 let BOOT = null;
 let MINE_ROWS = [], PM_ROWS = [], OPS_ROWS = [];
@@ -78,165 +78,37 @@ function gasCall(fnName, arg) {
    - No writes yet
    - Just a safe wrapper we’ll use in Step 2+
 */
+/* ================= FIREBASE (PLUMBING ONLY — NO BEHAVIOR CHANGE YET) =================
+   - No listeners yet
+   - No writes yet
+   - Just a safe wrapper we’ll use in Step 2+
+*/
 window.FB = window.FB || (() => {
   const state = { inited: false, enabled: false, initError: null };
 
   function init() {
-  const style = document.createElement('style');
-  style.textContent = `
-            .custom-multiselect { position: relative; width: 100%; font-family: 'Inter', sans-serif; }
-            .select-trigger { background: #ffffff; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; color: #0f172a; font-size: 13px; display: flex; align-items: center; justify-content: space-between; min-height: 42px; width: 100%; }
-            .select-trigger:hover { border-color: #cbd5e1; }
-            .select-trigger:after { content: '▼'; font-size: 10px; color: #94a3b8; }
-            .select-options { position: absolute; top: 100%; left: 0; right: 0; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; z-index: 100; max-height: 200px; overflow-y: auto; margin-top: 4px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
-            .select-options.hidden { display: none; }
-            .select-options label { display: flex; align-items: center; padding: 8px 12px; cursor: pointer; color: #334155; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
-            .select-options label:last-child { border-bottom: none; }
-            .select-options label:hover { background: #f8fafc; color: #0f172a; }
-            .select-options input { margin-right: 10px; accent-color: #8b5cf6; }
-            
-            /* Injected Priority Green */
-            .card.prio-green { background-color: #f0fdf4; border-left-color: #22c55e; }
-        `;
-  document.head.appendChild(style);
+    if (state.inited) return state;
+    state.inited = true;
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const emailParam = urlParams.get('email');
-  const email = (window.currentUser ? window.currentUser.email : '') || emailParam || '';
+    try {
+      if (!window.FIREBASE_ENABLED) throw new Error('FIREBASE_ENABLED is false');
+      if (!window.firebase) throw new Error('Firebase SDK not loaded');
 
-  apiBootstrapClient(email)
-    .then(b => {
-      BOOT = b;
-
-      // Firebase plumbing only (no listeners / no behavior change yet)
-      if (window.FB && typeof FB.init === 'function') {
-        try { FB.init(); } catch (e) { /* keep going */ }
+      // Only initialize Firebase app when enabled (Step 2+)
+      if ((!firebase.apps || !firebase.apps.length) && window.FIREBASE_CONFIG) {
+        firebase.initializeApp(window.FIREBASE_CONFIG);
       }
 
-      initAdminViewAs_();
-      PRIORITY_OPTIONS = b.priorityOptions || [];
-      PHASE_COLORS = b.phaseColors || {};
-      if (window.Notif) {
-        Notif.init(b);
-        document.addEventListener('click', () => Notif.requestPermission(), { once: true });
-      }
-      document.getElementById('whoami').textContent = `${b.name} (${(b.roles || []).join(', ')})`;
-      if (b.logoUrl && b.logoUrl !== 'undefined') document.getElementById('logoImg').src = b.logoUrl;
+      state.enabled = true;
+      console.log('[Firebase] Plumbing ready');
+    } catch (e) {
+      state.enabled = false;
+      state.initError = e;
+      console.warn('[Firebase] Plumbing not active:', (e && e.message) ? e.message : e);
+    }
+    return state;
+  }
 
-      const roles = (b.roles || []).map(r => r.toUpperCase());
-      const hasPM = roles.includes('PM');
-      const hasOps = roles.includes('OPERATIONAL');
-
-      const tMine = document.getElementById('tabMine');
-      const tPM = document.getElementById('tabPM');
-      const tOps = document.getElementById('tabOps');
-
-      tMine.style.display = 'none';
-      tPM.style.display = 'none';
-      tOps.style.display = 'none';
-
-      let availableTabs = [];
-      if (hasOps) { tOps.style.display = 'inline-block'; tOps.onclick = () => switchTab('ops'); availableTabs.push('ops'); }
-      // FIX: PMs can now see Designer Tab too
-      if (hasPM) {
-        tPM.style.display = 'inline-block';
-        tPM.onclick = () => switchTab('pm');
-        availableTabs.push('pm');
-
-        // Add Mine Tab for PMs too (to view themselves as Designer)
-        if (!availableTabs.includes('mine')) {
-          tMine.style.display = 'inline-block';
-          tMine.onclick = () => switchTab('mine');
-          availableTabs.push('mine');
-        }
-      }
-
-      const isPurePM = roles.length === 1 && roles[0] === 'PM';
-      const isPureOps = roles.length === 1 && roles[0] === 'OPERATIONAL';
-      const isPurePMOps = roles.length === 2 && hasPM && hasOps;
-
-      if (!availableTabs.includes('mine')) {
-        if (!isPurePMOps && !isPureOps) {
-          tMine.style.display = 'inline-block';
-          tMine.onclick = () => switchTab('mine');
-          availableTabs.push('mine');
-        }
-      }
-
-      if (roles.includes('DESIGNER')) {
-        if (!availableTabs.includes('mine')) {
-          tMine.style.display = 'inline-block';
-          tMine.onclick = () => switchTab('mine');
-          availableTabs.push('mine');
-        }
-      }
-
-      document.getElementById('tabs').style.display = 'flex';
-
-      ['mineSort', 'mineStatus', 'minePMFilter'].forEach(id => { document.getElementById(id).addEventListener('change', render); });
-      document.getElementById('q').addEventListener('input', () => { clearTimeout(inflight.search); inflight.search = setTimeout(render, 300); });
-      document.getElementById('opsSearch').addEventListener('input', render);
-      ['opsDesignerFilter', 'opsPriorityFilter', 'opsPMFilter', 'opsStatusFilter', 'includeUnassigned'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('change', render); });
-
-      // PM Sort listener
-      const pmSort = document.getElementById('pmSort');
-      if (pmSort) pmSort.addEventListener('change', render);
-
-      if (hasPM || hasOps) {
-        ['pmSelect', 'pmSort', 'pmStatusFilter', 'pmDesignerFilter'].forEach(id => {
-          const el = document.getElementById(id);
-          if (!el) return;
-          el.addEventListener('change', () => {
-            if (id === 'pmSelect') {
-              const val = el.value;
-              if (window.Notif && typeof Notif.reset === 'function') try { Notif.reset('pm'); } catch (e) { }
-              loadPM(val);
-            } else { render(); }
-          });
-        });
-      }
-
-      // Default Tab Logic
-      if (availableTabs.includes('pm')) switchTab('pm');
-      else if (availableTabs.includes('ops')) switchTab('ops');
-      else if (availableTabs.includes('mine')) switchTab('mine');
-
-      if (availableTabs.includes('ops')) loadOperational();
-      if (availableTabs.includes('pm')) { loadPM(b.name); }
-
-      // Ensure only one auto-refresh timer exists
-      if (__autoRefreshTimer) clearInterval(__autoRefreshTimer);
-
-      // 8s feels much less “jittery” while still “live”
-      // (we’ll later make this event-driven with Firebase signals)
-      __autoRefreshTimer = setInterval(autoRefresh, 8000);
-    })
-    .catch(err => {
-      console.error(err);
-      // Fallback for testing/offline
-      if (!BOOT) {
-        console.warn('Using Fallback Bootstrap');
-        BOOT = {
-          name: 'Fallback Designer',
-          email: 'marvsppam0@gmail.com', // Fix crash
-          roles: ['DESIGNER'],
-          priorityOptions: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
-          phaseColors: {},
-          pmList: ['Mock PM']
-        };
-        PRIORITY_OPTIONS = BOOT.priorityOptions;
-        document.getElementById('whoami').textContent = BOOT.name;
-        document.getElementById('tabs').style.display = 'flex';
-        document.getElementById('tabMine').style.display = 'inline-block';
-        document.getElementById('tabMine').onclick = () => switchTab('mine');
-        switchTab('mine');
-        setInterval(() => autoRefresh(), 2000);
-      }
-    });
-}
-
-
-  // Lazy getter (we will NOT call this in Step 1)
   function db() {
     init();
     if (!state.enabled) return null;
@@ -249,6 +121,7 @@ window.FB = window.FB || (() => {
 
   return { init, db, safeKey, _state: state };
 })();
+
 
 
 // Client wrappers (keep local fallback behavior if you ever run MY LOCAL FILES)
@@ -795,6 +668,10 @@ function init() {
   apiBootstrapClient(email)
     .then(b => {
       BOOT = b;
+      if (window.FIREBASE_ENABLED && window.FB && typeof FB.init === 'function') {
+        try { FB.init(); } catch (e) {}
+      }
+
       initAdminViewAs_();
       PRIORITY_OPTIONS = b.priorityOptions || [];
       PHASE_COLORS = b.phaseColors || {};
