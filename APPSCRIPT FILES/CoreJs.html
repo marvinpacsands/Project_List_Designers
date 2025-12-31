@@ -1,5 +1,5 @@
 <script>
-// 447
+// 540
 /* ================= GLOBALS & STATE ================= */
 let BOOT = null;
 let MINE_ROWS = [], PM_ROWS = [], OPS_ROWS = [];
@@ -73,23 +73,102 @@ function gasCall(fnName, arg) {
   });
 }
 
-/* ================= FIREBASE (PLUMBING ONLY — NO BEHAVIOR CHANGE YET) =================
-   - No listeners yet
-   - No writes yet
-   - Just a safe wrapper we’ll use in Step 2+
+/* ================= FIREBASE DOORBELL (STEP 2) =================
+   - NO listeners yet (Step 3)
+   - NO big payload writes
+   - Only tiny timestamp pings: signals/notif/<userKey> = serverTimestamp
 */
+window.FB = window.FB || (() => {
+  const state = { inited: false, enabled: false };
 
-/* ================= FIREBASE (PLUMBING ONLY — NO BEHAVIOR CHANGE YET) =================
-   - No listeners yet
-   - No writes yet
-   - Just a safe wrapper we’ll use in Step 2+
-*/
+  function init() {
+    if (state.inited) return state;
+    state.inited = true;
+
+    try {
+      if (!window.FIREBASE_ENABLED) throw new Error('FIREBASE_ENABLED is false');
+      if (!window.firebase) throw new Error('Firebase SDK not loaded');
+
+      // Initialize app if not already
+      if ((!firebase.apps || !firebase.apps.length) && window.FIREBASE_CONFIG) {
+        firebase.initializeApp(window.FIREBASE_CONFIG);
+      }
+
+      state.enabled = true;
+      console.log('[Firebase] Doorbell ready');
+    } catch (e) {
+      state.enabled = false;
+      console.warn('[Firebase] Doorbell disabled:', (e && e.message) ? e.message : e);
+    }
+    return state;
+  }
+
+  function db() {
+    init();
+    if (!state.enabled) return null;
+    return firebase.database ? firebase.database() : null;
+  }
+
+  // make a stable Firebase path key from either email or name
+  function safeKey(v) {
+    return String(v || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[.#$\[\]\/]/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_@-]/g, '_')
+      .replace(/_+/g, '_');
+  }
+
+  function targetsFromGenerated_(generatedNotifications) {
+    const out = new Set();
+    (generatedNotifications || []).forEach(n => {
+      const raw =
+        (n && (n.targetName || n.target || n.to || n.email || n.recipientEmail || '')) || '';
+      String(raw)
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .forEach(t => out.add(t));
+    });
+    return Array.from(out);
+  }
+
+  // Tiny “doorbell ping” for each recipient in generatedNotifications
+  function ringNotifications(generatedNotifications) {
+    const database = db();
+    if (!database) return Promise.resolve(false);
+
+    const targets = targetsFromGenerated_(generatedNotifications);
+    if (!targets.length) return Promise.resolve(false);
+
+    const ts = firebase.database.ServerValue.TIMESTAMP;
+    const updates = {};
+
+    targets.forEach(t => {
+      const k = safeKey(t);
+      if (!k) return;
+      updates[`signals/notif/${k}`] = ts;
+    });
+
+    // optional global bell (tiny)
+    updates['signals/notif/_global'] = ts;
+
+    return database.ref().update(updates)
+      .then(() => true)
+      .catch(err => {
+        console.warn('[Firebase] ringNotifications failed:', err);
+        return false;
+      });
+  }
+
+  return { init, db, safeKey, ringNotifications };
+})();
 
 
-/* ================= FIREBASE (DOORBELL MODE) =================
-   - Still NO listeners yet (that’s Step 3/4)
-   - This only provides tiny “pings” we can write after meaningful changes
-*/
+
+
+
 window.FB = window.FB || (() => {
   const state = { inited: false, enabled: false, initError: null };
 
@@ -689,7 +768,7 @@ function saveRow(idx, view) {
       if (dot) { dot.className = 'sync-dot saved'; setTimeout(() => dot.className = 'sync-dot', 2000); }
       if (msg) { msg.textContent = 'Upd ' + (res && res.savedAtDisplay ? res.savedAtDisplay : ''); }
 
-      // ✅ Step 2: Doorbell ping (tiny) — only if server generated notifications
+      // ✅ STEP 2: tiny doorbell ping only (no big writes)
       if (res && res.generatedNotifications && res.generatedNotifications.length > 0) {
         if (window.FB && typeof FB.ringNotifications === 'function') {
           FB.ringNotifications(res.generatedNotifications);
@@ -702,7 +781,6 @@ function saveRow(idx, view) {
     });
   }
 }
-
 
 
 function debounceSave(idx, view) {
