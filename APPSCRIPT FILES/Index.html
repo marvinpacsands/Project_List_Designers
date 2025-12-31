@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-/* 256 */
+//1026
 <head>
   <meta charset="UTF-8">
   <base target="_top">
@@ -945,28 +945,6 @@
   window.currentUser = <?!= currentUserJson ?>;
   window.WEBAPP_URL = <?!= JSON.stringify(webAppUrl) ?>;
   console.log('Logged in as:', window.currentUser);
-</script>
-<!-- FIREBASE (plumbing only — we keep it OFF until Step 2/3) -->
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-<script>
-  // Keep Firebase disabled for now so nothing “switches over” yet.
-  // We’ll turn this ON when we start Step 2.
-  window.FIREBASE_ENABLED = true;
-
-  window.FIREBASE_CONFIG = {
-    apiKey: "AIzaSyCKXYSIjysAaMX9BkW4FqckvTkqNMxCNw4",
-    authDomain: "project-list-designers-11c69.firebaseapp.com",
-    databaseURL: "https://project-list-designers-11c69-default-rtdb.firebaseio.com",
-    projectId: "project-list-designers-11c69",
-    storageBucket: "project-list-designers-11c69.firebasestorage.app",
-    messagingSenderId: "460395532456",
-    appId: "1:460395532456:web:19d55e0556a99e8f5b729d",
-    measurementId: "G-H51PQ99SCR"
-  };
-
-  // Do NOT initialize here yet — we’re staying “no behavior change” in Step 1.
-  console.log('[Firebase] SDK loaded (disabled for now)');
 </script>
 
 </head>

@@ -1,4 +1,4 @@
-// Code.gs 447
+// Code.gs
 function normalizeEmailParam_(v) {
   let s = String(v || '').trim();
   if (!s) return '';

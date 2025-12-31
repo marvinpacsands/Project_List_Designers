@@ -1,5 +1,5 @@
+// 1026
 <script>
-// 624
 /* ================= GLOBALS & STATE ================= */
 let BOOT = null;
 let MINE_ROWS = [], PM_ROWS = [], OPS_ROWS = [];
@@ -72,109 +72,6 @@ function gasCall(fnName, arg) {
     }
   });
 }
-
-
-/* ================= FIREBASE DOORBELL (NOTIFS + PROJECTS) =================
-   - Still NO streaming data
-   - Only tiny pings:
-       signals/notif/<key> = timestamp
-       signals/proj/<key>  = timestamp
-*/
-window.FB = window.FB || (() => {
-  const state = { inited: false, enabled: false };
-
-  function init() {
-    if (state.inited) return state;
-    state.inited = true;
-
-    try {
-      if (!window.FIREBASE_ENABLED) throw new Error('FIREBASE_ENABLED is false');
-      if (!window.firebase) throw new Error('Firebase SDK not loaded');
-
-      if ((!firebase.apps || !firebase.apps.length) && window.FIREBASE_CONFIG) {
-        firebase.initializeApp(window.FIREBASE_CONFIG);
-      }
-
-      state.enabled = true;
-      console.log('[Firebase] Doorbell ready');
-    } catch (e) {
-      state.enabled = false;
-      console.warn('[Firebase] Doorbell disabled:', (e && e.message) ? e.message : e);
-    }
-    return state;
-  }
-
-  function db() {
-    init();
-    if (!state.enabled) return null;
-    return firebase.database ? firebase.database() : null;
-  }
-
-  function safeKey(v) {
-    return String(v || '')
-      .toLowerCase()
-      .trim()
-      .replace(/[.#$\[\]\/]/g, '_')
-      .replace(/\s+/g, '_')
-      .replace(/[^a-z0-9_@-]/g, '_')
-      .replace(/_+/g, '_');
-  }
-
-  function normalizeTargets_(list) {
-    const out = new Set();
-    (list || []).forEach(v => {
-      String(v || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean)
-        .forEach(s => out.add(s));
-    });
-    return Array.from(out);
-  }
-
-  function ring_(prefix, targets) {
-    const database = db();
-    if (!database) return Promise.resolve(false);
-
-    const t = normalizeTargets_(targets);
-    if (!t.length) return Promise.resolve(false);
-
-    const ts = firebase.database.ServerValue.TIMESTAMP;
-    const updates = {};
-
-    t.forEach(x => {
-      const k = safeKey(x);
-      if (!k) return;
-      updates[`signals/${prefix}/${k}`] = ts;
-    });
-
-    // optional global bell (tiny). No one has to listen to it.
-    updates[`signals/${prefix}/_global`] = ts;
-
-    return database.ref().update(updates)
-      .then(() => true)
-      .catch(err => {
-        console.warn(`[Firebase] ring ${prefix} failed:`, err);
-        return false;
-      });
-  }
-
-  function ringNotifications(generatedNotifications) {
-    // Pull targets from generatedNotifications.targetName (your backend uses targetName)
-    const targets = [];
-    (generatedNotifications || []).forEach(n => targets.push(n && n.targetName));
-    return ring_('notif', targets);
-  }
-
-  function ringProjects(targets) {
-    return ring_('proj', targets);
-  }
-
-  return { init, db, safeKey, ringNotifications, ringProjects };
-})();
-
-
-
 
 // Client wrappers (keep local fallback behavior if you ever run MY LOCAL FILES)
 function apiBootstrapClient(email) {
@@ -680,24 +577,6 @@ function saveRow(idx, view) {
     }).then(res => {
       if (dot) { dot.className = 'sync-dot saved'; setTimeout(() => dot.className = 'sync-dot', 2000); }
       if (msg) { msg.textContent = 'Upd ' + (res && res.savedAtDisplay ? res.savedAtDisplay : ''); }
-
-      // ✅ STEP 4: ring PROJECTS bell (tiny)
-      const targets = [];
-      if (r && r.pmName) targets.push(r.pmName);
-      if (r && Array.isArray(r.team)) r.team.forEach(t => targets.push(t && t.name));
-      // include self (helps if others target by email)
-      if (window.currentUser && window.currentUser.email) targets.push(window.currentUser.email);
-
-      if (window.FB && typeof FB.ringProjects === 'function') {
-        FB.ringProjects(targets);
-      }
-
-      // ✅ If backend generated notifications, ring NOTIF bell too
-      if (res && res.generatedNotifications && res.generatedNotifications.length > 0) {
-        if (window.FB && typeof FB.ringNotifications === 'function') {
-          FB.ringNotifications(res.generatedNotifications);
-        }
-      }
     }).catch(err => {
       console.error(err);
       if (dot) { dot.className = 'sync-dot'; dot.style.background = 'red'; }
@@ -707,90 +586,9 @@ function saveRow(idx, view) {
 }
 
 
-
 function debounceSave(idx, view) {
   clearTimeout(saveTimers[idx]);
   saveTimers[idx] = setTimeout(() => saveRow(idx, view), 1000);
-}
-/* ================= PROJECT DOORBELL LISTENER (STEP 4) ================= */
-const __projDoorbell = {
-  unsubs: [],
-  last: {},
-  timer: null,
-  pending: false,
-  debounceMs: 650,
-  visHooked: false
-};
-
-function stopProjectDoorbell_() {
-  (__projDoorbell.unsubs || []).forEach(fn => { try { fn(); } catch(e){} });
-  __projDoorbell.unsubs = [];
-}
-
-function queueProjectRefresh_() {
-  if (document.hidden) {
-    __projDoorbell.pending = true;
-    return;
-  }
-  clearTimeout(__projDoorbell.timer);
-  __projDoorbell.timer = setTimeout(() => {
-    autoRefresh();
-  }, __projDoorbell.debounceMs);
-}
-
-function startProjectDoorbell_() {
-  try {
-    if (!window.FIREBASE_ENABLED) return;
-    if (!window.FB || typeof FB.db !== 'function') return;
-
-    const database = FB.db();
-    if (!database) return;
-
-    const email = (window.currentUser && window.currentUser.email) || '';
-    const name  = (BOOT && BOOT.name) || (window.currentUser && window.currentUser.name) || '';
-
-    const sk = (window.FB && typeof FB.safeKey === 'function') ? FB.safeKey : (v => String(v || '').toLowerCase());
-    const keys = Array.from(new Set([email, name].filter(Boolean).map(sk))).filter(Boolean);
-    if (!keys.length) return;
-
-    stopProjectDoorbell_();
-
-    keys.forEach(k => {
-      const ref = database.ref('signals/proj/' + k);
-
-      const handler = (snap) => {
-        const v = snap.val();
-
-        // Prime: ignore first snapshot to avoid instant refresh on load
-        if (__projDoorbell.last[k] === undefined) {
-          __projDoorbell.last[k] = v;
-          return;
-        }
-
-        if (v === __projDoorbell.last[k]) return;
-        __projDoorbell.last[k] = v;
-
-        queueProjectRefresh_();
-      };
-
-      ref.on('value', handler);
-      __projDoorbell.unsubs.push(() => ref.off('value', handler));
-    });
-
-    if (!__projDoorbell.visHooked) {
-      __projDoorbell.visHooked = true;
-      document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && __projDoorbell.pending) {
-          __projDoorbell.pending = false;
-          autoRefresh();
-        }
-      });
-    }
-
-    console.log('[Projects] Doorbell listening on:', keys);
-  } catch (e) {
-    console.warn('[Projects] Doorbell failed:', e);
-  }
 }
 
 function init() {
@@ -819,17 +617,6 @@ function init() {
   apiBootstrapClient(email)
     .then(b => {
       BOOT = b;
-      // Ensure Firebase helper is initialized (safe)
-      if (window.FIREBASE_ENABLED && window.FB && typeof FB.init === 'function') {
-        try { FB.init(); } catch (e) {}
-      }
-      // Start listening for project changes (Step 4)
-      startProjectDoorbell_();
-
-      if (window.FIREBASE_ENABLED && window.FB && typeof FB.init === 'function') {
-        try { FB.init(); } catch (e) {}
-      }
-
       initAdminViewAs_();
       PRIORITY_OPTIONS = b.priorityOptions || [];
       PHASE_COLORS = b.phaseColors || {};
@@ -933,9 +720,7 @@ function init() {
 
       // 8s feels much less “jittery” while still “live”
       // (we’ll later make this event-driven with Firebase signals)
-      const backupInterval = (window.FIREBASE_ENABLED ? 60000 : 8000); // 60s backup when doorbell is live
-      __autoRefreshTimer = setInterval(autoRefresh, backupInterval);
-
+      __autoRefreshTimer = setInterval(autoRefresh, 8000);
     })
     .catch(err => {
       console.error(err);

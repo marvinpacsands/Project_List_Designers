@@ -1,4 +1,4 @@
-// Config.gs 447
+// Config.gs
 const CFG = {
   DOMAIN: "pacsands.com",
 
