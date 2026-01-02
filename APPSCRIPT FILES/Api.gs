@@ -1,5 +1,5 @@
 // Api.gs
-// 104
+// 1008
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -943,9 +943,9 @@ function apiProjects(params) {
   const values = sh.getDataRange().getValues();
 
   const projects = [];
-
   for (let r = 1; r < values.length; r++) {
     const row = values[r];
+
     const projectNumber = row[map["Project #"]];
     const projectName = row[map["Project"]];
     const status = row[map["Status"]];
@@ -961,46 +961,30 @@ function apiProjects(params) {
     const operationalUser = String(row[map["Operational"]] || "");
     const operationalNotes = String(row[map["Operational notes"]] || "");
 
-    const base = {
+    const p = {
       rowIndex,
       projectNumber: String(projectNumber || ""),
       projectName: String(projectName || ""),
       status: String(status || ""),
       internalId: String(row[map["Internal ID"]] || ""),
-      pmName: pmName,
-      pm: pm,
-      team: team,
-      operational: { user: operationalUser, notes: operationalNotes },
-      lastModified: { dateDisplay: "", dateMs: 0, by: "", display: "" },
-      missing: []
+
+      team,
+      pmName: String(pmName || ""),
+      pm,
+      operational: {
+        name: String(operationalUser || ""),
+        notes: String(operationalNotes || ""),
+        date: String(row[map["Operational date"]] || "")
+      }
     };
 
-    if (mode === "mine") {
-      const mySlot = team.find(t => slotMatchesUser_(t, user));
-      base.my = mySlot
-        ? { slot: mySlot.slot, priority: mySlot.priority, notes: mySlot.notes, dateDisplay: mySlot.dateDisplay }
-        : { slot: null, priority: "", notes: "", dateDisplay: "" };
-    }
-
-    projects.push(base);
+    projects.push(p);
   }
-
-  // Build lists for filters
-  const pmSet = new Set();
-  const statusSet = new Set();
-
-  projects.forEach(p => {
-    const pmName = String(p.pmName || "").trim();
-    if (pmName) pmSet.add(pmName);
-    else pmSet.add("Unassigned");
-
-    const st = String(p.status || "").trim();
-    if (st) statusSet.add(st);
-  });
 
   // ✅ Step 5 FIX: Global Unassigned Count (matches local)
   // Excludes archived-type rows based on status and PM priority text.
-  const archiveKeywords = ["completed", "cancelled", "on hold", "abandoned"];
+  // FIX: include "archive" so archive-folder projects are not counted.
+  const archiveKeywords = ["archive", "completed", "cancelled", "on hold", "abandoned"];
   const totalUnassigned = projects.filter(p => {
     const pmName = String(p.pmName || "").trim();
     const isUnassigned = !pmName || normalize_(pmName) === "unassigned";
@@ -1020,19 +1004,11 @@ function apiProjects(params) {
 
   if (mode === "mine") {
     filtered = projects.filter(p => (p.team || []).some(t => slotMatchesUser_(t, user)));
-
   } else if (mode === "pm") {
-    const pmName = pmQuery || user.name;
-    const raw = String(pmName || "").trim();
-    const rawUpper = raw.toUpperCase();
+    const raw = String(pmQuery || "").trim();
+    const pmName = raw === "__ALL__" ? "__ALL__" : raw;
 
-    const isAllProjects =
-      rawUpper === "__ALL__" ||
-      normalize_(raw).replace(/\s+/g, "") === "allprojects";
-
-    if (isAllProjects) {
-      filtered = projects;
-    } else {
+    if (pmName && pmName !== "__ALL__") {
       filtered = projects.filter(p => {
         const pPm = String(p.pmName || "").trim();
 
@@ -1052,54 +1028,39 @@ function apiProjects(params) {
     filtered = projects;
   }
 
-  // Active counts per designer across ALL projects (matches local)
-  const designerCounts = {};
+  // Build response (plus PM-only metadata)
+  const response = { projects: filtered };
+
   if (mode === "pm") {
-    const INACTIVE_STATUSES = [
-      "Abandoned",
-      "Expired",
-      "Approved - Construction Phase",
-      "Completed - Sent to Client",
-      "Paused - Stalled by 3rd Party",
-      "Do Not Click - Final Submit for Approval"
-    ];
-    const norm = (s) => String(s || "").toLowerCase().trim();
+    const list = allUsers
+      .filter(u => u.roles.indexOf("pm") !== -1)
+      .map(u => u.name)
+      .filter(n => String(n || "").trim() && String(n || "").trim() !== "__ALL__")
+      .sort((a, b) => a.localeCompare(b));
 
+    const statusSet = new Set();
+    const designerCounts = {};
     projects.forEach(p => {
-      const status = norm(p.status);
-      const isInactive = INACTIVE_STATUSES.some(s => status.includes(norm(s)));
-      if (isInactive) return;
-
+      statusSet.add(String(p.status || ""));
       (p.team || []).forEach(t => {
-        const des = norm(t.name);
-        if (des && des !== "unassigned") {
-          designerCounts[des] = (designerCounts[des] || 0) + 1;
-        }
+        const name = String(t && t.name || "").trim();
+        if (!name) return;
+        designerCounts[name] = (designerCounts[name] || 0) + 1;
       });
     });
-  }
-
-  const response = {
-    projects: filtered,
-    people: allUsers
-  };
-
-  if (mode === "pm") {
-    const pmName = pmQuery || user.name;
-
-    const list = Array.from(pmSet)
-      .filter(v => v && String(v).trim() !== "__ALL__")
-      .sort((a, b) => a.localeCompare(b));
 
     response.pmList = ["__ALL__", ...list];
     response.statusList = Array.from(statusSet).sort((a, b) => a.localeCompare(b));
     response.totalUnassigned = totalUnassigned;
     response.designerCounts = designerCounts;
+
+    // preserve existing PM custom sort behavior
     response.customSortOrder = getCustomSortOrder_(email, pmName);
   }
 
   return response;
 }
+
 
 
 
