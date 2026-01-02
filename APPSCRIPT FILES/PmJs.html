@@ -1,5 +1,4 @@
 <script>
-  //724
   function ensureLegacyProjectShape_(p) {
     if (!p) return p;
 
@@ -568,336 +567,229 @@
     el.innerHTML = html;
   }
 
-async function savePM(idx, card) {
-  let row = PM_ROWS.find(r => String(r.rowIndex) === String(idx));
-  if (!row && window.STICKY_UNASSIGNED) {
-    row = window.STICKY_UNASSIGNED.find(r => String(r.rowIndex) === String(idx));
-  }
+  async function savePM(idx, card) {
+    let row = PM_ROWS.find(r => r.rowIndex === idx);
+    if (!row && window.STICKY_UNASSIGNED) {
+      row = window.STICKY_UNASSIGNED.find(r => r.rowIndex === idx);
+    }
 
-  if (row) {
-    const proceed = await confirmPMOverride(BOOT.name, row.pmName);
-    if (!proceed) return;
-  }
+    if (row) {
+      const proceed = await confirmPMOverride(BOOT.name, row.pmName);
+      if (!proceed) return;
+    }
 
-  const pmAssigned = card.querySelector('.form-grid select').value;
-  const pmNote = card.querySelector('textarea').value;
+    const pmAssigned = card.querySelector('.form-grid select').value;
+    const pmNote = card.querySelector('textarea').value;
 
-  const dSels = card.querySelectorAll('.des-name-sel');
-  const pSels = card.querySelectorAll('.des-prio-sel');
+    const dSels = card.querySelectorAll('.des-name-sel');
+    const pSels = card.querySelectorAll('.des-prio-sel');
 
-  const d1 = dSels[0].value, d2 = dSels[1].value, d3 = dSels[2].value;
-  let p1 = pSels[0].value, p2 = pSels[1].value, p3 = pSels[2].value;
+    const d1 = dSels[0].value, d2 = dSels[1].value, d3 = dSels[2].value;
+    const p1 = pSels[0].value, p2 = pSels[1].value, p3 = pSels[2].value;
 
-  const msg = document.getElementById(`pmmsg-${idx}`);
-  if (msg) msg.textContent = 'Saving...';
+    const msg = document.getElementById(`pmmsg-${idx}`);
+    if (msg) msg.textContent = 'Saving...';
 
-  const pRow = PM_ROWS.find(r => String(r.rowIndex) === String(idx));
-  const sRow = (window.STICKY_UNASSIGNED || []).find(r => String(r.rowIndex) === String(idx));
-  const targets = [pRow, sRow].filter(x => x);
-  const uniqueTargets = [...new Set(targets)];
+    const pRow = PM_ROWS.find(r => r.rowIndex === idx);
+    const sRow = (window.STICKY_UNASSIGNED || []).find(r => r.rowIndex === idx);
+    const targets = [pRow, sRow].filter(x => x);
+    const uniqueTargets = [...new Set(targets)];
 
-  // Helpers
-  const norm = (v) => String(v || '').toLowerCase().trim();
-  const asUnassigned = (v) => (!v || v === 'Unassigned');
+    uniqueTargets.forEach(target => {
+      if (target.pm) target.pm.notes = pmNote;
+      target.pmName = pmAssigned;
 
-  // Capture "before" designer names (so we can detect reassignment)
-  const beforeNames = {};
-  if (row && Array.isArray(row.team)) {
-    [1, 2, 3].forEach(slot => {
-      const t = row.team.find(x => Number(x.slot) === Number(slot)) || {};
-      beforeNames[slot] = String(t.name || '');
+      target.team = [1, 2, 3].map(slot => {
+        const existing = (target.team || []).find(t => t.slot === slot) || {};
+        const dVal = slot === 1 ? d1 : slot === 2 ? d2 : d3;
+        const pVal = slot === 1 ? p1 : slot === 2 ? p2 : p3;
+        return { slot, name: dVal, priority: pVal, notes: existing.notes || '', dateDisplay: existing.dateDisplay || '' };
+      });
+
+      ensureLegacyProjectShape_(target);
     });
-  }
 
-  const afterNames = { 1: d1, 2: d2, 3: d3 };
-
-  // If a PM reassigns a slot, clear BOTH priority + notes for that slot
-  const changedSlots = {};
-  [1, 2, 3].forEach(slot => {
-    const oldN = norm(beforeNames[slot]);
-    const newN = norm(afterNames[slot]);
-    changedSlots[slot] = (oldN !== newN);
-  });
-
-  // Enforce cleared priority if reassigned (even if something left a value in the dropdown)
-  if (changedSlots[1]) p1 = '';
-  if (changedSlots[2]) p2 = '';
-  if (changedSlots[3]) p3 = '';
-
-  // Update local rows so the UI stays in sync immediately
-  uniqueTargets.forEach(target => {
-    if (target.pm) target.pm.notes = pmNote;
-    target.pmName = pmAssigned;
-
-    target.team = [1, 2, 3].map(slot => {
-      const existing = (target.team || []).find(t => Number(t.slot) === Number(slot)) || {};
-      const dVal = slot === 1 ? d1 : slot === 2 ? d2 : d3;
-      const pVal = slot === 1 ? p1 : slot === 2 ? p2 : p3;
-
-      // If designer changed in this slot, wipe notes + priority + dateDisplay
-      if (changedSlots[slot]) {
-        return { slot, name: dVal, priority: '', notes: '', dateDisplay: '' };
+    const pmSel = document.getElementById('pmSelect');
+    if (pmSel && pmSel.value === 'Unassigned') {
+      if (!window.STICKY_UNASSIGNED) window.STICKY_UNASSIGNED = [];
+      if (!window.STICKY_UNASSIGNED.some(s => s.rowIndex === idx)) {
+        if (row) window.STICKY_UNASSIGNED.push(row);
       }
-
-      return {
-        slot,
-        name: dVal,
-        priority: pVal,
-        notes: existing.notes || '',
-        dateDisplay: existing.dateDisplay || ''
-      };
-    });
-
-    ensureLegacyProjectShape_(target);
-  });
-
-  // Update card's visible notes immediately (so it doesn't look like notes "carried over")
-  try {
-    const teamCards = card.querySelectorAll('.team-card');
-    [1, 2, 3].forEach((slot, i) => {
-      if (!teamCards[i]) return;
-      if (!changedSlots[slot]) return;
-
-      const noteDiv = teamCards[i].querySelector('.tm-body');
-      if (!noteDiv) return;
-
-      const newName = afterNames[slot];
-      noteDiv.textContent = asUnassigned(newName) ? 'Unassigned' : '';
-    });
-  } catch (e) {
-    // ignore UI update failures; server will still save correctly
-  }
-
-  // Sticky list behavior (keep as-is)
-  const pmSel = document.getElementById('pmSelect');
-  if (pmSel && pmSel.value === 'Unassigned') {
-    if (!window.STICKY_UNASSIGNED) window.STICKY_UNASSIGNED = [];
-    if (!window.STICKY_UNASSIGNED.some(s => String(s.rowIndex) === String(idx))) {
-      if (row) window.STICKY_UNASSIGNED.push(row);
     }
-  }
 
-  // Stable project identity for backend (rowIndex kept for back-compat)
-  const srcRow = pRow || sRow || row || {};
-  const projectKey =
-    String(srcRow.projectKey || (typeof getProjectKeyFromRow === 'function' ? getProjectKeyFromRow(srcRow) : '')) ||
-    (String(srcRow.projectNumber || '').trim() || String(srcRow.projectName || '').trim()
-      ? (norm(srcRow.projectNumber) + '||' + norm(srcRow.projectName))
-      : '');
+    const body = {
+      email: window.currentUser.email,
+      mode: 'pm',
+      payload: {
+        rowIndex: idx,
+        pmPriority: '',
+        pmNotes: pmNote,
+        pmName: pmAssigned,
+        designer1: d1, designer2: d2, designer3: d3,
+        designer1Priority: p1,
+        designer2Priority: p2,
+        designer3Priority: p3
+      }
+    };
 
-  const body = {
-    email: window.currentUser.email,
-    mode: 'pm',
-    payload: {
-      rowIndex: idx,               // legacy
-      projectKey: projectKey,      // stable
-      projectNumber: srcRow.projectNumber || '',
-      projectName: srcRow.projectName || '',
-      pmPriority: '',
-      pmNotes: pmNote,
-      pmName: pmAssigned,
-      designer1: d1, designer2: d2, designer3: d3,
-      designer1Priority: p1,
-      designer2Priority: p2,
-      designer3Priority: p3
-    }
-  };
-
-  const call = (typeof apiUpdateClient === 'function')
-    ? apiUpdateClient(body)
-    : fetch('/api/update', {
+    const call = (typeof apiUpdateClient === 'function')
+      ? apiUpdateClient(body)
+      : fetch('/api/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       }).then(r => r.json());
 
-  call.then(res => {
-    if (msg) msg.textContent = 'Upd ' + (res && res.savedAtDisplay ? res.savedAtDisplay : '');
+    call.then(res => {
+      if (msg) msg.textContent = 'Upd ' + (res && res.savedAtDisplay ? res.savedAtDisplay : '');
 
-    // --- FIREBASE PUSH (keep as-is; may be wired later) ---
-    if (res && res.generatedNotifications && res.generatedNotifications.length > 0) {
-      console.log('[Notif] Server generated notifications (PM):', res.generatedNotifications);
-      const fb = window.firebase;
-      if (fb && fb.apps.length) {
-        const db = fb.database();
-        const updates = {};
-        res.generatedNotifications.forEach(n => {
-          const safeId = String(n.id).replace(/\./g, '_');
-          n.id = safeId;
-          updates['notifications/' + safeId] = n;
-        });
-        db.ref().update(updates).catch(e => console.error('[Notif] Push failed', e));
+      // --- FIREBASE PUSH (2025-12-29) ---
+      if (res && res.generatedNotifications && res.generatedNotifications.length > 0) {
+        console.log('[Notif] Server generated notifications (PM):', res.generatedNotifications);
+        const fb = window.firebase;
+        if (fb && fb.apps.length) {
+          const db = fb.database();
+          const updates = {};
+          res.generatedNotifications.forEach(n => {
+            const safeId = String(n.id).replace(/\./g, '_');
+            n.id = safeId;
+            updates['notifications/' + safeId] = n;
+          });
+          db.ref().update(updates).catch(e => console.error('[Notif] Push failed', e));
+        }
       }
-    }
-  }).catch(e => {
-    console.error(e);
-    if (msg) msg.textContent = 'Error';
-  });
-}
-
-
-function saveCustomOrder(orderedRowIndexes, orderedProjectKeys) {
-  const urlParams = new URLSearchParams(window.location.search);
-  const emailParam =
-    urlParams.get('email') ||
-    ((window.currentUser && window.currentUser.email) || (typeof BOOT !== 'undefined' ? BOOT.email : '') || '');
-
-  const pmSelect = document.getElementById('pmSelect');
-  const pmName = pmSelect ? pmSelect.value : BOOT.name;
-
-  // Keep local meta in sync so the UI doesn't "jump" on next render
-  window.GLOBAL_META = window.GLOBAL_META || {};
-  window.GLOBAL_META.customSortOrder = (orderedRowIndexes || []).map(String);
-
-  if (Array.isArray(orderedProjectKeys) && orderedProjectKeys.length > 0) {
-    window.GLOBAL_META.customSortOrderKeys = orderedProjectKeys.map(String);
+    }).catch(e => {
+      console.error(e);
+      if (msg) msg.textContent = 'Error';
+    });
   }
 
-  const body = {
-    email: emailParam,
-    pmName,
-    orderedRowIndexes: (orderedRowIndexes || []).map(String),
-    orderedProjectKeys: Array.isArray(orderedProjectKeys) ? orderedProjectKeys.map(String) : []
-  };
 
-  const call = (window.google && google.script && google.script.run && typeof gasCall === 'function')
-    ? gasCall('apiSaveCustomOrder', body)
-    : fetch('/api/custom-order', {
+  function saveCustomOrder(orderedRowIndexes) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const emailParam = urlParams.get('email') || ((window.currentUser && window.currentUser.email) || (typeof BOOT !== 'undefined' ? BOOT.email : '') || '');
+
+    const pmSelect = document.getElementById('pmSelect');
+    const pmName = pmSelect ? pmSelect.value : BOOT.name;
+
+    if (window.GLOBAL_META) {
+      window.GLOBAL_META.customSortOrder = orderedRowIndexes;
+    }
+
+    const body = { email: emailParam, pmName, orderedRowIndexes };
+
+    const call = (window.google && google.script && google.script.run && typeof gasCall === 'function')
+      ? gasCall('apiSaveCustomOrder', body)
+      : fetch('/api/custom-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       }).then(r => r.json());
 
-  call.then(res => console.log('Custom order saved:', res))
-    .catch(e => console.error('Failed to save custom order:', e));
-}
+    call.then(res => console.log('Custom order saved:', res))
+      .catch(e => console.error('Failed to save custom order:', e));
+  }
 
 
 
   // Make globally accessible for core.js drag-drop handlers
   window.saveCustomOrder = saveCustomOrder;
 
-async function executeRemoteShift(pmRowIndex, desSlot, desName, newPrio, projectKey, projectNumber, projectName) {
-  const person = PEOPLE_LIST.find(p => p.name === desName);
-  const query = person ? person.email : desName;
+  async function executeRemoteShift(pmRowIndex, desSlot, desName, newPrio) {
+    const person = PEOPLE_LIST.find(p => p.name === desName);
+    const query = person ? person.email : desName;
 
-  document.getElementById('liveText').textContent = 'Shifting...';
+    document.getElementById('liveText').textContent = 'Shifting...';
 
-  const norm = (v) => String(v || '').toLowerCase().trim();
-  const mkKey = (pn, nm) => {
-    const a = String(pn == null ? '' : pn).trim();
-    const b = String(nm == null ? '' : nm).trim();
-    if (!a && !b) return '';
-    return `${norm(a)}||${norm(b)}`;
-  };
+    try {
+      const data = await apiProjectsRequest_({ mode: 'mine', email: query });
+      let projects = ensureLegacyProjects_(data.projects || []);
 
-  try {
-    const data = await apiProjectsRequest_({ mode: 'mine', email: query });
-    let projects = ensureLegacyProjects_(data.projects || []);
+      const targetProj = projects.find(p => String(p.rowIndex) === String(pmRowIndex));
+      if (!targetProj) {
+        console.error('Target project not found in designer list', pmRowIndex);
+        return;
+      }
 
-    const wantKey = String(projectKey || '') || mkKey(projectNumber, projectName);
-
-    const targetProj =
-      (wantKey && projects.find(p => String(p.projectKey || '') === wantKey)) ||
-      projects.find(p => String(p.rowIndex) === String(pmRowIndex));
-
-    if (!targetProj) {
-      console.error('Target project not found in designer list', pmRowIndex, wantKey);
-      document.getElementById('liveText').textContent = 'Error';
-      return;
-    }
-
-    const updates = [];
-    const targetPrioInt = parseInt(newPrio, 10);
-
-    const targetKey = String(targetProj.projectKey || '') || mkKey(targetProj.projectNumber, targetProj.projectName);
-
-    updates.push({
-      rowIndex: targetProj.rowIndex,
-      projectKey: targetKey,
-      projectNumber: targetProj.projectNumber || '',
-      projectName: targetProj.projectName || '',
-      priority: String(newPrio),
-      notes: targetProj.my?.notes || ''
-    });
-
-    let others = projects.filter(p => String(p.rowIndex) !== String(targetProj.rowIndex));
-    let bumpVal = targetPrioInt;
-
-    while (true) {
-      const conflict = others.find(p => parseInt(p.my?.priority, 10) === bumpVal);
-      if (!conflict) break;
-
-      const nextVal = bumpVal + 1;
-      let newStr = String(nextVal);
-      if (nextVal > 10) newStr = '';
-
-      const cKey = String(conflict.projectKey || '') || mkKey(conflict.projectNumber, conflict.projectName);
+      const updates = [];
+      const targetPrioInt = parseInt(newPrio, 10);
 
       updates.push({
-        rowIndex: conflict.rowIndex,
-        projectKey: cKey,
-        projectNumber: conflict.projectNumber || '',
-        projectName: conflict.projectName || '',
-        priority: newStr,
-        notes: conflict.my?.notes || ''
+        rowIndex: targetProj.rowIndex,
+        priority: String(newPrio),
+        notes: targetProj.my?.notes || ''
       });
 
-      if (newStr === '') break;
-      bumpVal = nextVal;
-    }
+      let others = projects.filter(p => String(p.rowIndex) !== String(pmRowIndex));
+      let bumpVal = targetPrioInt;
 
-    for (const u of updates) {
-      const body = {
-        email: query,
-        mode: 'mine',
-        payload: {
-          rowIndex: u.rowIndex,             // legacy
-          projectKey: u.projectKey,         // stable
-          projectNumber: u.projectNumber,
-          projectName: u.projectName,
-          priority: u.priority,
-          notes: u.notes,
-          realActorEmail: window.currentUser ? window.currentUser.email : null,
-          skipNotifications: String(u.rowIndex) !== String(targetProj.rowIndex)
-        }
-      };
+      while (true) {
+        const conflict = others.find(p => parseInt(p.my?.priority, 10) === bumpVal);
+        if (!conflict) break;
 
-      let res;
-      if (typeof apiUpdateClient === 'function') {
-        res = await apiUpdateClient(body);
-      } else {
-        const r = await fetch('/api/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
+        const nextVal = bumpVal + 1;
+        let newStr = String(nextVal);
+        if (nextVal > 10) newStr = '';
+
+        updates.push({
+          rowIndex: conflict.rowIndex,
+          priority: newStr,
+          notes: conflict.my?.notes || ''
         });
-        res = await r.json();
+
+        if (newStr === '') break;
+        bumpVal = nextVal;
       }
 
-      // --- FIREBASE PUSH (keep as-is) ---
-      if (res && res.generatedNotifications && res.generatedNotifications.length > 0) {
-        console.log('[Notif] Server generated notifications (Shift):', res.generatedNotifications);
-        const fb = window.firebase;
-        if (fb && fb.apps.length) {
-          const db = fb.database();
-          const fbUpdates = {};
-          res.generatedNotifications.forEach(n => {
-            const safeId = String(n.id).replace(/\./g, '_');
-            n.id = safeId;
-            fbUpdates['notifications/' + safeId] = n;
+      for (const u of updates) {
+        const body = {
+          email: query,
+          mode: 'mine',
+          payload: {
+            rowIndex: u.rowIndex,
+            priority: u.priority,
+            notes: u.notes,
+            realActorEmail: window.currentUser ? window.currentUser.email : null,
+            skipNotifications: String(u.rowIndex) !== String(pmRowIndex)
+          }
+        };
+
+        let res;
+        if (typeof apiUpdateClient === 'function') {
+          res = await apiUpdateClient(body);
+        } else {
+          const r = await fetch('/api/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
           });
-          db.ref().update(fbUpdates).catch(e => console.error('[Notif] Push failed', e));
+          res = await r.json();
+        }
+
+        // --- FIREBASE PUSH ---
+        if (res && res.generatedNotifications && res.generatedNotifications.length > 0) {
+          console.log('[Notif] Server generated notifications (Shift):', res.generatedNotifications);
+          const fb = window.firebase;
+          if (fb && fb.apps.length) {
+            const db = fb.database();
+            const updates = {};
+            res.generatedNotifications.forEach(n => {
+              const safeId = String(n.id).replace(/\./g, '_');
+              n.id = safeId;
+              updates['notifications/' + safeId] = n;
+            });
+            // No await, fire and forget
+            db.ref().update(updates).catch(e => console.error('[Notif] Push failed', e));
+          }
         }
       }
-    }
 
-    loadPM();
-  } catch (e) {
-    console.error('Remote Shift Failed', e);
-    document.getElementById('liveText').textContent = 'Error';
+      loadPM();
+    } catch (e) {
+      console.error('Remote Shift Failed', e);
+      document.getElementById('liveText').textContent = 'Error';
+    }
   }
-}
 
 
   // --- Designer Centric View ---

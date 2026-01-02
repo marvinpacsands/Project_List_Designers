@@ -1,5 +1,5 @@
 <script>
-//754
+//1026
 // Expose all animation functions globally for index.html
 
 // Confetti Cannon (one-shot, realistic) + optional sound.
@@ -381,13 +381,11 @@ window.enhancedSmartUpdateCard = function (rowIndex, newPriority, oldPriority, v
     else if (isOps) rows = typeof OPS_ROWS !== 'undefined' ? OPS_ROWS : [];
     else rows = typeof MINE_ROWS !== 'undefined' ? MINE_ROWS : [];
 
-    const rowKey = String(rowIndex);
-
-    const cardId = `card-${rowKey}`;
+    const cardId = `card-${rowIndex}`;
     const cardEl = document.getElementById(cardId);
     if (!cardEl) return;
 
-    const cardData = rows.find(r => String(r.rowIndex) === rowKey);
+    const cardData = rows.find(r => r.rowIndex === rowIndex);
     if (!cardData) return;
 
     // Helper to get effective priority
@@ -528,7 +526,7 @@ window.enhancedSmartUpdateCard = function (rowIndex, newPriority, oldPriority, v
             // ... other modes ... mostly fine to ignore for animation perfectly or just use smart default
         }
 
-        const newIndex = regularRows.findIndex(r => String(r.rowIndex) === rowKey);
+        const newIndex = regularRows.findIndex(r => r.rowIndex === rowIndex);
         const currentCards = Array.from(grid.children).filter(el =>
             el.classList.contains('card') && !el.classList.contains('folder-card')
         );

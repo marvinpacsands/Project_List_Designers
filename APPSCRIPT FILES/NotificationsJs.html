@@ -1,5 +1,5 @@
 <script>
-    //754
+    //950
 (() => {
     const STATE = {
         boot: null,
@@ -522,147 +522,28 @@
     }
 
     function viewProject(projectNumber, notifId) {
-        console.log('[Notif] Looking for project:', projectNumber, 'notifId:', notifId);
+        console.log('[Notif] Looking for project:', projectNumber);
 
         const allCards = document.querySelectorAll('[id^="card-"]');
         let targetCard = null;
 
-        // Pull extra identity from the actual notification (if we have it)
-        const notif = notifId ? (STATE.history || []).find(n => String(n.id) === String(notifId)) : null;
+        const dataSources = [
+            { name: 'PM_ROWS', data: window.PM_ROWS },
+            { name: 'MINE_ROWS', data: window.MINE_ROWS },
+            { name: 'OPS_ROWS', data: window.OPS_ROWS }
+        ];
 
-        // Stable identity (preferred): projectKey = norm(Project #) + '||' + norm(Project Name)
-        const wantedKey = (() => {
-            const pn = (notif && (notif.projectNumber != null)) ? notif.projectNumber : projectNumber;
-            const nm = (notif && notif.projectName) ? notif.projectName : '';
-            if (notif && notif.projectKey) return String(notif.projectKey);
-
-            const a = String(pn ?? '').trim();
-            const b = String(nm ?? '').trim();
-            if (!a && !b) return '';
-            return `${norm(a)}||${norm(b)}`;
-        })();
-
-        const makeKeyFromRow = (p) => {
-            if (!p) return '';
-            if (p.projectKey) return String(p.projectKey);
-            const a = String(p.projectNumber ?? '').trim();
-            const b = String(p.projectName ?? '').trim();
-            if (!a && !b) return '';
-            return `${norm(a)}||${norm(b)}`;
-        };
-
-        const findDomByKey = (key) => {
-            if (!key) return null;
-
-            // Fast path if CSS.escape exists
-            try {
-                if (window.CSS && typeof CSS.escape === 'function') {
-                    const el = document.querySelector(`[data-project-key="${CSS.escape(String(key))}"]`);
-                    if (el) return el;
-                }
-            } catch (e) { }
-
-            // Fallback: scan cards
-            for (const c of allCards) {
-                const k = c.getAttribute('data-project-key') || (c.dataset && c.dataset.projectKey) || c.getAttribute('data-projectkey');
-                if (k && String(k) === String(key)) return c;
-            }
-            return null;
-        };
-
-        // 1) Best: find the card directly by stable key in the DOM
-        targetCard = findDomByKey(wantedKey);
-
-        // 2) Next: look up the project in the in-memory datasets, then jump to its card id
-        if (!targetCard) {
-            const dataSources = [
-                { name: 'PM_ROWS', data: window.PM_ROWS },
-                { name: 'MINE_ROWS', data: window.MINE_ROWS },
-                { name: 'OPS_ROWS', data: window.OPS_ROWS }
-            ];
-
-            for (const source of dataSources) {
-                if (source.data && Array.isArray(source.data)) {
-                    console.log(`[Notif] Searching in ${source.name}, found ${source.data.length} projects`);
-
-                    const project = source.data.find(p => {
-                        if (wantedKey) return String(makeKeyFromRow(p)) === String(wantedKey);
-                        return String(p.projectNumber) === String(projectNumber);
-                    });
-
-                    if (project) {
-                        console.log(`[Notif] Found project in ${source.name}:`, project.projectName, 'rowIndex:', project.rowIndex);
-
-                        targetCard =
-                            document.getElementById('card-' + project.rowIndex) ||
-                            findDomByKey(makeKeyFromRow(project));
-
-                        if (targetCard) {
-                            console.log('[Notif] Found card element:', targetCard.id);
-                            break;
-                        }
+        for (const source of dataSources) {
+            if (source.data && Array.isArray(source.data)) {
+                console.log(`[Notif] Searching in ${source.name}, found ${source.data.length} projects`);
+                const project = source.data.find(p => String(p.projectNumber) === String(projectNumber));
+                if (project) {
+                    console.log(`[Notif] Found project in ${source.name}:`, project.projectName, 'rowIndex:', project.rowIndex);
+                    targetCard = document.getElementById('card-' + project.rowIndex);
+                    if (targetCard) {
+                        console.log('[Notif] Found card element:', targetCard.id);
+                        break;
                     }
-                }
-            }
-        }
-
-        // 3) Last resort: text search (kept for backwards compatibility)
-        if (!targetCard) {
-            console.log('[Notif] Trying DOM text-search method...');
-            allCards.forEach(card => {
-                const cardText = card.textContent || '';
-                if (cardText.includes('#' + projectNumber)) {
-                    console.log('[Notif] Found card by text search:', card.id);
-                    targetCard = card;
-                }
-            });
-        }
-
-        if (targetCard) {
-            console.log('[Notif] Scrolling to card:', targetCard.id);
-
-            targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-            const highlightOverlay = document.createElement('div');
-            highlightOverlay.style.cssText = `
-                position: absolute;
-                top: -3px;
-                left: -3px;
-                right: -3px;
-                bottom: -3px;
-                background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
-                border-radius: inherit;
-                pointer-events: none;
-                z-index: 1;
-                transition: opacity 1s ease;
-                opacity: 1;
-            `;
-
-            const originalPosition = targetCard.style.position;
-            targetCard.style.position = 'relative';
-            targetCard.insertBefore(highlightOverlay, targetCard.firstChild);
-
-            targetCard.style.transition = 'box-shadow 1s ease';
-            targetCard.style.boxShadow = '0 0 30px rgba(102, 126, 234, 0.4)';
-
-            setTimeout(() => {
-                highlightOverlay.style.opacity = '0';
-                targetCard.style.boxShadow = '0 0 0 rgba(102, 126, 234, 0)';
-
-                setTimeout(() => {
-                    highlightOverlay.remove();
-                    targetCard.style.position = originalPosition;
-                    targetCard.style.boxShadow = '';
-                    targetCard.style.transition = '';
-                }, 1000);
-            }, 2000);
-        } else {
-            console.error('[Notif] Could not find card for project #' + projectNumber);
-            console.log('[Notif] Available cards:', Array.from(allCards).map(c => c.id));
-            alert('Could not find project #' + projectNumber + ' on this page. You may need to switch views or adjust filters.');
-        }
-    }
-
                 }
             }
         }
