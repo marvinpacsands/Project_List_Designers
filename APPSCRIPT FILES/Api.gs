@@ -1,5 +1,5 @@
 // Api.gs
-// 1010
+// 1016
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -1000,7 +1000,7 @@ function apiProjects(params) {
 
   // ✅ Step 5 FIX: Global Unassigned Count (matches local)
   // Excludes archived-type rows based on status and PM priority text.
-  const archiveKeywords = ["completed", "cancelled", "on hold", "abandoned"];
+  const archiveKeywords = ["Abandoned,Expired", "Approved - Construction Phase", "Completed - Sent to Client", "Paused - Stalled by 3rd Party", "Do Not Click - Final Submit for Approval"];
   const totalUnassigned = projects.filter(p => {
     const pmName = String(p.pmName || "").trim();
     const isUnassigned = !pmName || normalize_(pmName) === "unassigned";
