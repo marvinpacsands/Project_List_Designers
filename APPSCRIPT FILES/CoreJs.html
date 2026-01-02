@@ -1,4 +1,4 @@
-// 654
+// 706
 <script>
 /* ================= GLOBALS & STATE ================= */
 let BOOT = null;
@@ -852,13 +852,7 @@ function render() {
 
   // Designer View Hook
   if (ACTIVE_TAB === 'pm' && typeof IS_DESIGNER_MODE !== 'undefined' && IS_DESIGNER_MODE && typeof renderDesignerBoard === 'function') {
-    // Apply Filters first?
-    // User: "filters to adjust how many".
-    // But maybe standard filters (Status/PM) apply too? "filter to pm to...".
-    // Assume filtering logic below runs first?
-    // No, I inserted hook at TOP of render before filtering.
-    // To support filtering, I should move hook AFTER filtering.
-    // I'll insert it AFTER filtering logic (around line 720).
+    // Hook is applied later after filtering/sorting
   }
   const q = normalize(document.getElementById(ACTIVE_TAB === 'ops' ? 'opsSearch' : 'q').value);
 
@@ -985,27 +979,6 @@ function render() {
       }
 
       rows = rows.filter(p => (!p.pmName || p.pmName === 'Unassigned') || (window.STICKY_UNASSIGNED && window.STICKY_UNASSIGNED.some(s => s.rowIndex === p.rowIndex)));
-      // Add Banner
-      const banner = document.createElement('div');
-      banner.style.cssText = "background:#ef4444; color:white; padding:12px; margin-bottom:16px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; grid-column: 1 / -1;";
-      banner.innerHTML = `
-            <span style="font-weight:bold;">Showing ${rows.length} Unassigned Projects</span>
-            <button onclick="document.getElementById('btn-unassigned-projects').click()" style="background:white; color:#ef4444; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">Exit View</button>
-         `;
-      // We append banner later or just prepend to grid? 
-      // Grid clears innerHTML, so we can prepend.
-      // But grid logic might be complex. Let's handle it in LOOP or pre-loop.
-      // Actually, let's prepend to grid AFTER clearing.
-      // Grid passed to render functions.
-      // We'll attach it to a temporary variable and append it after grid.innerHTML = ''
-      if (grid) {
-        // We can't append yet, grid.innerHTML = '' happens at top.
-        // We are in filtering block.
-        // Let's modify 'rows' and append banner to grid NOW? 
-        // No, standard loop runs later.
-        // Let's store flag to append banner.
-      }
-      // Also clear other filters?
     } else {
       hydrateReactiveFilters(PM_ROWS, [
         { id: 'pmStatusFilter', key: 'status', type: 'status', defaultLabel: 'All Statuses' },
@@ -1071,35 +1044,26 @@ function render() {
     const mode = document.getElementById('mineSort').value;
     if (mode === 'smart') {
       rows.sort((a, b) => {
-        // 1. Status (Completed/Hold/Abandoned to Archive) - Handled by filter/grouping usually, but for raw list:
         const aEff = getEffectivePrio(a, 'mine');
         const bEff = getEffectivePrio(b, 'mine');
         const aSpecial = ['completed', 'on hold', 'abandoned'].includes(normalize(aEff));
         const bSpecial = ['completed', 'on hold', 'abandoned'].includes(normalize(bEff));
 
-        // Special items usually filtered out to Archive, but if they are here:
-        if (aSpecial !== bSpecial) return aSpecial ? 1 : -1; // Non-special top
+        if (aSpecial !== bSpecial) return aSpecial ? 1 : -1;
 
-        // 2. My Priority (1-10)
-        // getRank Returns 101-n (High Value = High Priority). 
-        // 1 -> 100. 
-        // Unranked -> 0.
         const myRankA = getRank(a.my?.priority);
         const myRankB = getRank(b.my?.priority);
 
-        // If both ranked, sort descending
         if (myRankA > 0 || myRankB > 0) {
           return myRankB - myRankA;
         }
 
-        // 3. Both Unranked: Sort by Neighbor Priority (Min Value is Best)
         const neighA = getNeighborBestRank(a);
         const neighB = getNeighborBestRank(b);
         if (neighA !== neighB) {
-          return neighA - neighB; // 1 (Best) ... 10 ... 999
+          return neighA - neighB;
         }
 
-        // 4. Default: Project #
         const an = parseFloat(a.projectNumber) || 0;
         const bn = parseFloat(b.projectNumber) || 0;
         return an - bn;
@@ -1116,11 +1080,9 @@ function render() {
 
     updateStats(rows);
   } else if (ACTIVE_TAB === 'pm') {
-    // PM Sorting
     const sortMode = document.getElementById('pmSort').value;
 
     rows.sort((a, b) => {
-      // Helper: Get Sorted Priorities (Best to Worst)
       const getPrios = (r) => {
         const p = [];
         (r.team || []).forEach(t => {
@@ -1130,7 +1092,6 @@ function render() {
         return p.sort((x, y) => x - y);
       };
 
-      // Helper: Get Sequence Number (Tie-Breaker)
       const getSeq = (r) => {
         if (!r.projectNumber) return 999999;
         const parts = String(r.projectNumber).split('-');
@@ -1144,48 +1105,40 @@ function render() {
         const maxLen = Math.max(pA.length, pB.length);
 
         for (let i = 0; i < maxLen; i++) {
-          // Missing priority = 999 (Worse than any valid priority)
           const valA = pA[i] !== undefined ? pA[i] : 999;
           const valB = pB[i] !== undefined ? pB[i] : 999;
 
           if (valA !== valB) {
-            // Asc (High -> Low): Lower number is better (comes first).
             if (sortMode === 'maxPrioAsc') return valA - valB;
-            // Desc (Low -> High / Unassigned First): Higher number comes first
             return valB - valA;
           }
         }
 
-        // Tie-Breaker: Sequence Number
         const seqA = getSeq(a);
         const seqB = getSeq(b);
 
-        // Asc: "Lower number the more priority" -> Lower Seq comes First.
         if (sortMode === 'maxPrioAsc') return seqA - seqB;
-        // Desc: Higher Seq comes First.
         return seqB - seqA;
       } else if (sortMode === 'customSort') {
-        // Custom Sort: Use saved order from server
+        // Custom Sort: Prefer stable project keys (Project # + Project) so sheet re-ordering doesn't break ordering
+        const customOrderKeys = (window.GLOBAL_META && window.GLOBAL_META.customSortOrderKeys) || [];
         const customOrder = (window.GLOBAL_META && window.GLOBAL_META.customSortOrder) || [];
 
-        // Convert to string for comparison (customOrder contains strings, rowIndex may be number or string)
-        const indexA = customOrder.indexOf(String(a.rowIndex));
-        const indexB = customOrder.indexOf(String(b.rowIndex));
+        const keyA = getProjectKeyFromRow(a);
+        const keyB = getProjectKeyFromRow(b);
 
-        // If both in custom order, sort by their saved position
+        const useKeys = Array.isArray(customOrderKeys) && customOrderKeys.length > 0;
+
+        const indexA = useKeys ? customOrderKeys.indexOf(String(keyA)) : customOrder.indexOf(String(a.rowIndex));
+        const indexB = useKeys ? customOrderKeys.indexOf(String(keyB)) : customOrder.indexOf(String(b.rowIndex));
+
         if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-
-        // If only A is in custom order, A comes first
         if (indexA !== -1) return -1;
-
-        // If only B is in custom order, B comes first
         if (indexB !== -1) return 1;
 
-        // If neither in custom order, use project number
         return (parseFloat(b.projectNumber) || 0) - (parseFloat(a.projectNumber) || 0);
       }
 
-      // Default / Tie-breaker (if not using sort mode): Project # Descending
       return (parseFloat(b.projectNumber) || 0) - (parseFloat(a.projectNumber) || 0);
     });
     updateStats(rows);
@@ -1202,7 +1155,6 @@ function render() {
     const archiveRows = [];
 
     rows.forEach(r => {
-      // Archive based on Status
       if (ARCHIVE_STATUSES.includes(normalize(r.status))) {
         archiveRows.push(r);
       } else {
@@ -1213,7 +1165,6 @@ function render() {
     const archCont = document.getElementById('archiveContainer');
     if (archCont) archCont.innerHTML = '';
 
-    // START Trigger Update (Mine)
     if (typeof updateArchiveTrigger === 'function') {
       updateArchiveTrigger(archiveRows, 'mine');
     }
@@ -1224,7 +1175,6 @@ function render() {
     const archiveRows = [];
 
     rows.forEach(r => {
-      // PM Archive Logic
       if (ARCHIVE_STATUSES.includes(normalize(r.status))) {
         archiveRows.push(r);
       } else {
@@ -1232,18 +1182,14 @@ function render() {
       }
     });
 
-    // START Trigger Update (PM)
     if (typeof updateArchiveTrigger === 'function') {
       updateArchiveTrigger(archiveRows, 'pm');
     }
-    // const archiveFolder = renderArchiveFolder(archiveRows, 'pm'); // Removed
-    // if (archiveFolder) grid.appendChild(archiveFolder); // Removed
 
     regularRows.forEach(r => {
       const card = buildPMCard(r);
       grid.appendChild(card);
 
-      // Enable drag-drop only in custom sort mode
       const sortMode = document.getElementById('pmSort').value;
       if (sortMode === 'customSort') {
         card.draggable = true;
@@ -1278,11 +1224,13 @@ function render() {
 
           if (draggedRowIndex === String(targetRowIndex)) return;
 
-          // Reorder the cards
+          // Reorder the cards (still based on card ids), but also save a stable project-key order
           const allCards = Array.from(grid.children);
-          const orderedRowIndexes = allCards.map(c => c.id.replace('card-', ''));
+          const orderedRowIndexes = allCards
+            .map(c => (c && c.id) ? String(c.id) : '')
+            .filter(id => id.startsWith('card-'))
+            .map(id => id.replace('card-', ''));
 
-          // Remove dragged item and insert before target
           const draggedIndex = orderedRowIndexes.indexOf(String(draggedRowIndex));
           const targetIndex = orderedRowIndexes.indexOf(String(targetRowIndex));
 
@@ -1292,10 +1240,21 @@ function render() {
             orderedRowIndexes.splice(newTargetIndex, 0, String(draggedRowIndex));
           }
 
-          // Save to server
-          saveCustomOrder(orderedRowIndexes);
+          // Build stable order keys in the same sequence
+          const idxToRow = new Map((regularRows || []).map(x => [String(x.rowIndex), x]));
+          const orderedProjectKeys = orderedRowIndexes.map(ix => {
+            const rowObj = idxToRow.get(String(ix));
+            return getProjectKeyFromRow(rowObj) || '';
+          });
 
-          // Re-render
+          // Update local meta immediately so the UI reflects the new order right away
+          window.GLOBAL_META = window.GLOBAL_META || {};
+          window.GLOBAL_META.customSortOrder = orderedRowIndexes.map(String);
+          window.GLOBAL_META.customSortOrderKeys = orderedProjectKeys.map(String);
+
+          // Save to server (rowIndexes for back-compat, keys for stable identity)
+          saveCustomOrder(orderedRowIndexes, orderedProjectKeys);
+
           render();
         });
       } else {
@@ -1305,12 +1264,15 @@ function render() {
     });
 
   } else if (ACTIVE_TAB === 'ops') {
-    updateStats(rows); // Reuse or custom? updateStats counts "My Projects".
+    updateStats(rows);
   } else {
     rows.forEach(r => grid.appendChild(buildOperationalCard(r)));
-    // Ops stats?
   }
 }
+
+
+
+
 function buildAdminViewAsBar_() {
   if (document.getElementById('admin-viewas-bar')) return;
 
