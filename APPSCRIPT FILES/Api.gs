@@ -1,5 +1,5 @@
 // Api.gs
-// 1016
+// 1020
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -970,22 +970,17 @@ function apiProjects(params) {
       pmName: pmName,
       pm: pm,
       team: team,
-      operational: { user: operationalUser, notes: operationalNotes },
-      lastModified: { dateDisplay: "", dateMs: 0, by: "", display: "" },
-      missing: []
+      operational: {
+        user: operationalUser,
+        notes: operationalNotes,
+        date: String(row[map["Operational date"]] || "")
+      }
     };
-
-    if (mode === "mine") {
-      const mySlot = team.find(t => slotMatchesUser_(t, user));
-      base.my = mySlot
-        ? { slot: mySlot.slot, priority: mySlot.priority, notes: mySlot.notes, dateDisplay: mySlot.dateDisplay }
-        : { slot: null, priority: "", notes: "", dateDisplay: "" };
-    }
 
     projects.push(base);
   }
 
-  // Build lists for filters
+  // Build PM/status dropdowns from all projects
   const pmSet = new Set();
   const statusSet = new Set();
 
@@ -998,19 +993,23 @@ function apiProjects(params) {
     if (st) statusSet.add(st);
   });
 
-  // ✅ Step 5 FIX: Global Unassigned Count (matches local)
-  // Excludes archived-type rows based on status and PM priority text.
-  const archiveKeywords = ["Abandoned,Expired", "Approved - Construction Phase", "Completed - Sent to Client", "Paused - Stalled by 3rd Party", "Do Not Click - Final Submit for Approval"];
+  // ✅ Global Unassigned Count (matches the archive behavior in the UI)
+  // Excludes rows that are considered "archived" by status.
+  const ARCHIVE_STATUSES = [
+    "Abandoned,Expired",
+    "Approved - Construction Phase",
+    "Completed - Sent to Client",
+    "Paused - Stalled by 3rd Party",
+    "Do Not Click - Final Submit for Approval"
+  ].map(normalize_);
+
   const totalUnassigned = projects.filter(p => {
     const pmName = String(p.pmName || "").trim();
     const isUnassigned = !pmName || normalize_(pmName) === "unassigned";
     if (!isUnassigned) return false;
 
-    const s = String(p.status || "").toLowerCase();
-    const pPrio = String((p.pm && p.pm.priority) || "").toLowerCase();
-
-    if (archiveKeywords.some(k => s.includes(k))) return false;
-    if (archiveKeywords.some(k => pPrio.includes(k))) return false;
+    const isArchived = ARCHIVE_STATUSES.includes(normalize_(p.status || ""));
+    if (isArchived) return false;
 
     return true;
   }).length;
@@ -1028,33 +1027,48 @@ function apiProjects(params) {
 
     const isAllProjects =
       rawUpper === "__ALL__" ||
-      normalize_(raw).replace(/\s+/g, "") === "allprojects";
+      normalize_(raw).replace(/\s+/g, "") === "__all__";
+
+    const isUnassignedOnly = normalize_(raw) === "unassigned";
 
     if (isAllProjects) {
-      filtered = projects;
-    } else {
+      filtered = includeUnassigned ? projects : projects.filter(p => String(p.pmName || "").trim());
+
+    } else if (isUnassignedOnly) {
       filtered = projects.filter(p => {
-        const pPm = String(p.pmName || "").trim();
-
-        if (normalize_(raw) === "unassigned") {
-          return !pPm || normalize_(pPm) === "unassigned";
-        }
-
-        if (includeUnassigned) {
-          return normalize_(pPm) === normalize_(raw) || !pPm || normalize_(pPm) === "unassigned";
-        }
-
-        return normalize_(pPm) === normalize_(raw);
+        const v = String(p.pmName || "").trim();
+        return !v || normalize_(v) === "unassigned";
       });
+
+    } else {
+      filtered = projects.filter(p => normalize_(p.pmName) === normalize_(raw));
+      if (includeUnassigned) {
+        const unassigned = projects.filter(p => {
+          const v = String(p.pmName || "").trim();
+          return !v || normalize_(v) === "unassigned";
+        });
+        filtered = filtered.concat(unassigned);
+      }
     }
 
   } else if (mode === "ops") {
     filtered = projects;
   }
 
-  // Active counts per designer across ALL projects (matches local)
-  const designerCounts = {};
+  // Response shape
+  const response = { projects: filtered };
+
   if (mode === "pm") {
+    const list = Array.from(pmSet)
+      .filter(x => x && x !== "__ALL__")
+      .sort((a, b) => a.localeCompare(b));
+
+    response.pmList = ["__ALL__", ...list];
+    response.statusList = Array.from(statusSet).sort((a, b) => a.localeCompare(b));
+    response.totalUnassigned = totalUnassigned;
+
+    // Active counts per designer across ALL projects (matches local)
+    const designerCounts = {};
     const INACTIVE_STATUSES = [
       "Abandoned",
       "Expired",
@@ -1067,39 +1081,26 @@ function apiProjects(params) {
 
     projects.forEach(p => {
       const status = norm(p.status);
-      const isInactive = INACTIVE_STATUSES.some(s => status.includes(norm(s)));
-      if (isInactive) return;
+      const inactive = INACTIVE_STATUSES.map(norm).includes(status);
+      if (inactive) return;
 
       (p.team || []).forEach(t => {
-        const des = norm(t.name);
-        if (des && des !== "unassigned") {
-          designerCounts[des] = (designerCounts[des] || 0) + 1;
-        }
+        const name = String(t.name || "").trim();
+        if (!name) return;
+        designerCounts[name] = (designerCounts[name] || 0) + 1;
       });
     });
-  }
 
-  const response = {
-    projects: filtered,
-    people: allUsers
-  };
-
-  if (mode === "pm") {
-    const pmName = pmQuery || user.name;
-
-    const list = Array.from(pmSet)
-      .filter(v => v && String(v).trim() !== "__ALL__")
-      .sort((a, b) => a.localeCompare(b));
-
-    response.pmList = ["__ALL__", ...list];
-    response.statusList = Array.from(statusSet).sort((a, b) => a.localeCompare(b));
-    response.totalUnassigned = totalUnassigned;
     response.designerCounts = designerCounts;
+
+    // Custom sort order persisted per PM
+    const pmName = pmQuery || user.name;
     response.customSortOrder = getCustomSortOrder_(email, pmName);
   }
 
   return response;
 }
+
 
 
 
