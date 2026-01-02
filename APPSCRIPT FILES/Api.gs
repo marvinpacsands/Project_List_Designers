@@ -1,5 +1,5 @@
 // Api.gs
-// 101
+// 104
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -943,8 +943,6 @@ function apiProjects(params) {
   const values = sh.getDataRange().getValues();
 
   const projects = [];
-  const pmSet = new Set();
-  const statusSet = new Set();
 
   for (let r = 1; r < values.length; r++) {
     const row = values[r];
@@ -963,52 +961,61 @@ function apiProjects(params) {
     const operationalUser = String(row[map["Operational"]] || "");
     const operationalNotes = String(row[map["Operational notes"]] || "");
 
-    const p = {
-      rowIndex: rowIndex,
+    const base = {
+      rowIndex,
       projectNumber: String(projectNumber || ""),
       projectName: String(projectName || ""),
       status: String(status || ""),
+      internalId: String(row[map["Internal ID"]] || ""),
       pmName: pmName,
       pm: pm,
-      operationalUser: operationalUser,
-      operationalNotes: operationalNotes,
       team: team,
-      missing: getMissingSetup_(row, map, userIndex)
+      operational: { user: operationalUser, notes: operationalNotes },
+      lastModified: { dateDisplay: "", dateMs: 0, by: "", display: "" },
+      missing: []
     };
 
-    projects.push(p);
+    if (mode === "mine") {
+      const mySlot = team.find(t => slotMatchesUser_(t, user));
+      base.my = mySlot
+        ? { slot: mySlot.slot, priority: mySlot.priority, notes: mySlot.notes, dateDisplay: mySlot.dateDisplay }
+        : { slot: null, priority: "", notes: "", dateDisplay: "" };
+    }
 
-    const pmNameTrim = String(p.pmName || "").trim();
-    if (pmNameTrim) pmSet.add(pmNameTrim);
+    projects.push(base);
+  }
+
+  // Build lists for filters
+  const pmSet = new Set();
+  const statusSet = new Set();
+
+  projects.forEach(p => {
+    const pmName = String(p.pmName || "").trim();
+    if (pmName) pmSet.add(pmName);
     else pmSet.add("Unassigned");
 
     const st = String(p.status || "").trim();
     if (st) statusSet.add(st);
-  }
+  });
 
-  // ✅ Step 5 FIX: Global Unassigned Count (matches PM view button)
-  // Excludes rows that would appear inside the Archive folder in the PM view.
-  // NOTE: This mirrors the client-side ARCHIVE_STATUSES list exactly to keep UX identical.
-  const ARCHIVE_STATUSES = [
-    'abandoned,expired',
-    'approved - construction phase',
-    'completed - sent to client',
-    'paused - stalled by 3rd party',
-    'do not click - final submit for approval'
-  ];
-
+  // ✅ Step 5 FIX: Global Unassigned Count (matches local)
+  // Excludes archived-type rows based on status and PM priority text.
+  const archiveKeywords = ["completed", "cancelled", "on hold", "abandoned"];
   const totalUnassigned = projects.filter(p => {
     const pmName = String(p.pmName || "").trim();
     const isUnassigned = !pmName || normalize_(pmName) === "unassigned";
     if (!isUnassigned) return false;
 
-    const statusNorm = normalize_(p.status);
-    if (ARCHIVE_STATUSES.includes(statusNorm)) return false;
+    const s = String(p.status || "").toLowerCase();
+    const pPrio = String((p.pm && p.pm.priority) || "").toLowerCase();
+
+    if (archiveKeywords.some(k => s.includes(k))) return false;
+    if (archiveKeywords.some(k => pPrio.includes(k))) return false;
 
     return true;
   }).length;
 
-  // Filter per mode
+  // Filter by mode
   let filtered = projects;
 
   if (mode === "mine") {
@@ -1093,7 +1100,6 @@ function apiProjects(params) {
 
   return response;
 }
-
 
 
 
