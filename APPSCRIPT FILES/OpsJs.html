@@ -1,4 +1,5 @@
 <script>
+    //743
     function ensureLegacyProjectShape_(p) {
         if (!p) return p;
 
@@ -43,23 +44,44 @@
         return fetch('/api/projects?' + q.toString()).then(r => r.json());
     }
 
-    function loadOperational() {
-        document.getElementById('liveText').textContent = 'Syncing Ops...';
+function loadOperational() {
+    document.getElementById('liveText').textContent = 'Syncing Ops...';
 
-        apiProjectsRequest_({ mode: 'ops', email: window.currentUser.email })
-            .then(res => {
-                const next = ensureLegacyProjects_(res.projects || []);
-                if (window.Notif && typeof Notif.onOpsUpdate === 'function') try { Notif.onOpsUpdate(OPS_ROWS, next); } catch (e) { }
-                OPS_ROWS = next;
-                if (res.people) PEOPLE_LIST = res.people;
-                document.getElementById('liveText').textContent = 'Live';
-                if (ACTIVE_TAB === 'ops') render();
-            })
-            .catch(err => {
-                console.error(err);
-                document.getElementById('liveText').textContent = 'Error';
+    apiProjectsRequest_({ mode: 'ops', email: window.currentUser.email })
+        .then(res => {
+            const next = ensureLegacyProjects_(res.projects || []);
+
+            // Step 2: ensure each project has a stable projectKey (Project # + Project)
+            next.forEach(p => {
+                if (!p) return;
+                if (!p.projectKey) {
+                    if (typeof getProjectKeyFromRow === 'function') {
+                        p.projectKey = getProjectKeyFromRow(p) || '';
+                    } else if (typeof makeProjectKey === 'function') {
+                        p.projectKey = makeProjectKey(p.projectNumber, p.projectName) || '';
+                    } else {
+                        const pn = String(p.projectNumber || '').trim().toLowerCase();
+                        const nm = String(p.projectName || '').trim().toLowerCase();
+                        p.projectKey = (pn || nm) ? (pn + '||' + nm) : '';
+                    }
+                }
             });
-    }
+
+            if (window.Notif && typeof Notif.onOpsUpdate === 'function') {
+                try { Notif.onOpsUpdate(OPS_ROWS, next); } catch (e) { }
+            }
+
+            OPS_ROWS = next;
+            if (res.people) PEOPLE_LIST = res.people;
+
+            document.getElementById('liveText').textContent = 'Live';
+            if (ACTIVE_TAB === 'ops') render();
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('liveText').textContent = 'Error';
+        });
+}
 
 
     function buildOperationalCard(r) {
@@ -306,11 +328,24 @@
                 email: window.currentUser.email,
                 mode: 'ops',
                 payload: {
-                    rowIndex: r.rowIndex,
+                    rowIndex: r.rowIndex, // legacy
+
+                    // Step 2: stable project identity so updates don't depend on sheet row position
+                    projectKey: (
+                        String(
+                            r.projectKey ||
+                            (typeof getProjectKeyFromRow === 'function' ? getProjectKeyFromRow(r) : '') ||
+                            (typeof makeProjectKey === 'function' ? makeProjectKey(r.projectNumber, r.projectName) : '')
+                        ) || ''
+                    ),
+                    projectNumber: r.projectNumber || '',
+                    projectName: r.projectName || '',
+
                     pmName: pmVal,
                     designer1: d1, designer2: d2, designer3: d3,
                     operationalNotes: opsNoteVal
                 }
+
             };
 
             const call = (typeof apiUpdateClient === 'function')
