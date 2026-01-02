@@ -1,5 +1,5 @@
 // Api.gs
-// 913
+// 823
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -190,6 +190,14 @@ function setDesignerSlot_(row, map, slot, designerValue, userIndex) {
   const nameHeader = `DESIGNER${slot}`;
   const emailHeader = `Email - DESIGNER${slot}`;
 
+  // When a slot is reassigned, clear the *slot-owned* fields so the new designer
+  // doesn't inherit the previous designer's priority/notes.
+  const oldName = map[nameHeader] !== undefined ? row[map[nameHeader]] : "";
+  const oldNorm = normalize_(oldName);
+  const newNorm = normalize_(designerValue);
+
+  const changed = oldNorm !== newNorm;
+
   // Keep display value exactly what the UI expects
   row[map[nameHeader]] = designerValue;
 
@@ -199,7 +207,17 @@ function setDesignerSlot_(row, map, slot, designerValue, userIndex) {
     const email = v ? resolveEmailFromDesignerValue_(v, userIndex) : "";
     row[map[emailHeader]] = email;
   }
+
+  // ✅ Fix: clear BOTH priority + notes when the person in the slot changes
+  if (changed) {
+    const prioHeader = `Prioraty - DESIGNER${slot}`;
+    const notesHeader = `Notes - DESIGNER${slot}`;
+
+    if (map[prioHeader] !== undefined) row[map[prioHeader]] = "";
+    if (map[notesHeader] !== undefined) row[map[notesHeader]] = "";
+  }
 }
+
 
 function apiAdminListUsers() {
   const actorEmail = getSessionEmail_();
