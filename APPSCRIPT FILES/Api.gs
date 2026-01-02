@@ -1,5 +1,5 @@
 // Api.gs
-// 913
+// 632
 // Server-side API for the dashboard (Apps Script).
 // This replaces your old Express endpoints with callable GAS functions.
 // Frontend behavior stays the same; we’re just changing the transport layer.
@@ -202,12 +202,14 @@ function setDesignerSlot_(row, map, slot, designerValue, userIndex) {
 }
 
 function apiAdminListUsers() {
-  const actorEmail = getSessionEmail_();
+  const actorEmail = assertDomain_(getSessionEmail_() || getMyEmail_());
   if (!isAdminEmail_(actorEmail)) throw new Error('Not authorized');
 
   const sh = getSheet_(CFG.SHEET_USERS); // "Designer Emails"
   const values = sh.getDataRange().getValues();
   if (!values || values.length === 0) return [];
+
+  const suffix = getAllowedDomainSuffix_();
 
   // Detect header vs no-header
   // Expected either:
@@ -221,15 +223,18 @@ function apiAdminListUsers() {
     firstRow.some(x => x.toLowerCase() === 'role') ||
     firstRow.some(x => x.toLowerCase() === 'name');
 
-  if (!looksLikeHeader) startRow = 0;
-
-  // If header exists, map indices; otherwise default Role/Name/Email order
   let iRole = 0, iName = 1, iEmail = 2;
   if (looksLikeHeader) {
     const hdr = firstRow.map(x => x.toLowerCase());
-    iRole = Math.max(0, hdr.indexOf('role'));
-    iName = Math.max(1, hdr.indexOf('name'));
-    iEmail = Math.max(2, hdr.indexOf('email'));
+    iRole = hdr.indexOf('role');
+    iName = hdr.indexOf('name');
+    iEmail = hdr.indexOf('email');
+    if (iRole < 0) iRole = 0;
+    if (iName < 0) iName = 1;
+    if (iEmail < 0) iEmail = 2;
+    startRow = 1;
+  } else {
+    startRow = 0;
   }
 
   const out = [];
@@ -237,8 +242,9 @@ function apiAdminListUsers() {
     const role = String(values[r][iRole] || '').trim();
     const name = String(values[r][iName] || '').trim();
     const email = String(values[r][iEmail] || '').trim().toLowerCase();
+
     if (!email) continue;
-    if (!email.endsWith('@pacsands.com')) continue;
+    if (suffix && !email.endsWith(suffix)) continue;
 
     out.push({
       role,
@@ -255,13 +261,95 @@ function normalize_(v) {
   return String(v == null ? "" : v).trim().toLowerCase();
 }
 
+/**
+ * Returns the allowed email domain suffix, e.g. "@pacsands.com".
+ * Uses CFG.DOMAIN from Config.gs so the domain only lives in one place.
+ */
+function getAllowedDomainSuffix_() {
+  const d = String((CFG && CFG.DOMAIN) ? CFG.DOMAIN : "").trim().toLowerCase();
+  if (!d) return "";
+  return d.startsWith("@") ? d : ("@" + d);
+}
+
+/**
+ * Normalizes + validates that an email is allowed to use this dashboard.
+ * (Domain-restricted access.)
+ */
 function assertDomain_(email) {
   email = normalizeEmailParam_(email);
   if (!email) throw new Error('Missing email');
-  if (!email.endsWith('@pacsands.com')) throw new Error('Access denied');
+
+  const suffix = getAllowedDomainSuffix_();
+  if (suffix && !email.endsWith(suffix)) throw new Error('Access denied');
+
   return email;
 }
 
+/**
+ * Authorization context helper.
+ *
+ * - actorEmail: the real signed-in user (from Session)
+ * - targetEmail: the user the request is acting "as" (may differ for admin/PM flows)
+ *
+ * IMPORTANT:
+ * - Designers are NOT allowed to act as someone else.
+ * - PM/Ops are allowed to act on behalf of another user ONLY when the caller explicitly
+ *   allows it (see allowCrossUserRoles) — this preserves the PM "shift priorities" feature.
+ */
+function getAuthContext_(requestedEmail, options) {
+  options = options || {};
+
+  const allowMissingUser = !!options.allowMissingUser;
+  const allowCrossUser = options.allowCrossUser !== false; // default true
+  const allowCrossUserRoles = (options.allowCrossUserRoles || []).map(r => String(r || '').toUpperCase());
+
+  // Real signed-in user (works for domain-only deployments).
+  // If Session can't provide an email (rare), fall back to the requested email.
+  let actorEmail = normalizeEmailParam_(getSessionEmail_());
+  if (!actorEmail) actorEmail = normalizeEmailParam_(getMyEmail_());
+  if (!actorEmail) actorEmail = normalizeEmailParam_(requestedEmail);
+
+  actorEmail = assertDomain_(actorEmail);
+
+  const actorUser = getUserByEmail_(actorEmail);
+  const actorRoles = rolesFrom_(actorUser && actorUser.role);
+  const actorIsAdmin = actorRoles.includes('ADMIN') || isAdminEmail_(actorEmail);
+
+  let targetEmail = normalizeEmailParam_(requestedEmail);
+
+  const wantsCrossUser = !!(targetEmail && normalize_(targetEmail) !== normalize_(actorEmail));
+  const actorCanCrossUser =
+    actorIsAdmin ||
+    allowCrossUserRoles.some(r => actorRoles.includes(r));
+
+  if (!allowCrossUser || !wantsCrossUser || !actorCanCrossUser) {
+    targetEmail = actorEmail;
+  }
+
+  targetEmail = assertDomain_(targetEmail);
+
+  const targetUser = getUserByEmail_(targetEmail);
+
+  if (!allowMissingUser && !targetUser) {
+    throw new Error("Access denied (user not found in Designer Emails).");
+  }
+
+  return {
+    actorEmail,
+    actorIsAdmin,
+    actorUser,
+    actorRoles,
+    targetEmail,
+    targetUser,
+    targetRoles: rolesFrom_(targetUser && targetUser.role),
+    isImpersonating: actorIsAdmin && normalize_(targetEmail) !== normalize_(actorEmail)
+  };
+}
+
+function userHasRole_(user, roleUpper) {
+  const roles = rolesFrom_(user && user.role);
+  return roles.includes(String(roleUpper || "").toUpperCase());
+}
 
 function now_() {
   return new Date();
@@ -289,6 +377,88 @@ function safeJsonParse_(s, fallback) {
   } catch (e) {
     return fallback;
   }
+}
+
+/**
+ * Stable project identity: Project # + Project (normalized).
+ * This is used so sorting/reordering the sheet won't break updates.
+ */
+function makeProjectKey_(projectNumber, projectName) {
+  const pn = String(projectNumber == null ? "" : projectNumber).trim();
+  const name = String(projectName == null ? "" : projectName).trim();
+  if (!pn && !name) return "";
+  return `${normalize_(pn)}||${normalize_(name)}`;
+}
+
+function parseProjectKey_(projectKey) {
+  const raw = String(projectKey || "");
+  const parts = raw.split("||");
+  return {
+    projectNumber: parts[0] != null ? parts[0] : "",
+    projectName: parts.length > 1 ? parts.slice(1).join("||") : ""
+  };
+}
+
+function findProjectRowIndexByNumberAndName_(sh, map, projectNumber, projectName) {
+  const wantKey = makeProjectKey_(projectNumber, projectName);
+  if (!wantKey) return 0;
+
+  const values = sh.getDataRange().getValues();
+  for (let r = 1; r < values.length; r++) {
+    const row = values[r];
+    const key = makeProjectKey_(row[map["Project #"]], row[map["Project"]]);
+    if (key && key === wantKey) return r + 1; // sheet row number
+  }
+  return 0;
+}
+
+function resolveProjectRowIndex_(sh, map, payload) {
+  payload = payload || {};
+
+  // Preferred: stable identifier
+  const pn = payload.projectNumber;
+  const pName = payload.projectName;
+  const pKey = payload.projectKey;
+
+  if ((pn !== undefined || pName !== undefined) && (pn != null || pName != null)) {
+    const idx = findProjectRowIndexByNumberAndName_(sh, map, pn, pName);
+    if (idx) return idx;
+  }
+
+  if (pKey) {
+    const parsed = parseProjectKey_(pKey);
+    const idx = findProjectRowIndexByNumberAndName_(sh, map, parsed.projectNumber, parsed.projectName);
+    if (idx) return idx;
+  }
+
+  // Backward-compatible fallback (legacy frontend): sheet row number
+  const rowIndex = Number(payload.rowIndex || 0);
+  if (rowIndex) return rowIndex;
+
+  throw new Error("Missing project identifier (rowIndex or Project # + Project).");
+}
+
+/**
+ * Detects if a PM changed who is assigned in a given designer slot,
+ * using the email identity when possible (more stable than name text).
+ */
+function didDesignerSlotChange_(row, map, slot, newDesignerValue, userIndex) {
+  const nameHeader = `DESIGNER${slot}`;
+  const emailHeader = `Email - DESIGNER${slot}`;
+
+  const oldName = String(row[map[nameHeader]] || "");
+  const oldEmailCell =
+    (map[emailHeader] !== undefined) ? String(row[map[emailHeader]] || "").trim() : "";
+  const oldEmail = oldEmailCell || resolveEmailFromDesignerValue_(oldName, userIndex);
+
+  const newName = String(newDesignerValue == null ? "" : newDesignerValue);
+  const newEmail = resolveEmailFromDesignerValue_(newName, userIndex);
+
+  const oldEmailNorm = normalize_(oldEmail);
+  const newEmailNorm = normalize_(newEmail);
+
+  if (oldEmailNorm && newEmailNorm) return oldEmailNorm !== newEmailNorm;
+  return normalize_(oldName) !== normalize_(newName);
 }
 
 /**
@@ -509,7 +679,27 @@ function getCustomSortOrder_(email, pmName) {
   return [];
 }
 
-function setCustomSortOrder_(email, name, role, pmName, orderedRowIndexes) {
+// New (stable) custom ordering stored alongside the legacy rowIndex list.
+// Not used by the UI yet, but lets us migrate off sheet row numbers safely.
+function getCustomSortOrderKeys_(email, pmName) {
+  const sh = getSheet_(CFG.SHEET_USER_SETTINGS);
+  const values = sh.getDataRange().getValues();
+  if (values.length < 2) return [];
+
+  for (let r = 1; r < values.length; r++) {
+    const em = values[r][0];
+    if (normalize_(em) !== normalize_(email)) continue;
+
+    const jsonStr = values[r][3];
+    const obj = safeJsonParse_(jsonStr, {});
+    const bucket = obj && obj.__projectKeysByPm ? obj.__projectKeysByPm : {};
+    const arr = bucket && bucket[pmName] ? bucket[pmName] : [];
+    return Array.isArray(arr) ? arr.map(String) : [];
+  }
+  return [];
+}
+
+function setCustomSortOrder_(email, name, role, pmName, orderedRowIndexes, orderedProjectKeys) {
   const sh = getSheet_(CFG.SHEET_USER_SETTINGS);
   const values = sh.getDataRange().getValues();
 
@@ -529,7 +719,14 @@ function setCustomSortOrder_(email, name, role, pmName, orderedRowIndexes) {
     Object.assign(orderObj, existingObj || {});
   }
 
+  // Legacy list (kept for UI compatibility right now)
   orderObj[pmName] = (orderedRowIndexes || []).map(String);
+
+  // Stable list (for migration off row numbers)
+  if (Array.isArray(orderedProjectKeys)) {
+    if (!orderObj.__projectKeysByPm) orderObj.__projectKeysByPm = {};
+    orderObj.__projectKeysByPm[pmName] = orderedProjectKeys.map(String);
+  }
 
   if (rowIndex === -1) {
     sh.appendRow([email, name || "", role || "", JSON.stringify(orderObj), nowMs]);
@@ -545,6 +742,7 @@ function setCustomSortOrder_(email, name, role, pmName, orderedRowIndexes) {
 
   return { success: true };
 }
+
 function isUnassigned_(v) {
   const n = normalize_(v);
   return !n || n === "unassigned";
@@ -849,74 +1047,69 @@ function appendNotifications_(notifs, actorName) {
 ========================= */
 
 function apiBootstrap(email) {
-  const e = assertDomain_(email || getMyEmail_());
-  const user = getUserByEmail_(e);
+  // Only ADMIN can "view as" another user through the impersonate URL param.
+  const ctx = getAuthContext_(email, {
+    allowMissingUser: true,
+    allowCrossUserRoles: [] // only ADMIN can cross-user for bootstrap
+  });
 
+  const e = ctx.targetEmail;
+  const user = ctx.targetUser;
+
+  const priorityOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+
+  // If user isn't in "Designer Emails", keep the UI from hard-failing.
+  // (They still won't be able to save anything meaningful without being added.)
   if (!user) {
-    // Don’t break the UI: return something usable even if they’re missing from the list.
     return {
       email: e,
-      name: e.split("@")[0],
-      roles: ["DESIGNER"],
+      name: e.split('@')[0] || e,
+      roles: ['DESIGNER'],
       isPM: false,
       isOps: false,
-      priorityOptions: ["", "Low", "Medium", "High", "Urgent", "On Hold", "Completed", "Abandoned"],
+      priorityOptions,
       phaseColors: getPhaseColors_(),
       logoUrl: ""
     };
   }
 
-  const roleStr = String(user.role || "");
-  const roles = roleStr
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(s => s.toUpperCase());
+  const roles = rolesFrom_(user.role);
+  const isPM = roles.includes("PM") || roles.includes("ADMIN");
+  const isOps = roles.includes("OPERATIONAL") || roles.includes("ADMIN");
 
   return {
     email: user.email,
     name: user.name,
-    roles: roles,
-    isPM: roles.includes("PM"),
-    isOps: roles.includes("OPERATIONAL"),
-    priorityOptions: ["", "Low", "Medium", "High", "Urgent", "On Hold", "Completed", "Abandoned"],
+    roles,
+    isPM,
+    isOps,
+    priorityOptions,
     phaseColors: getPhaseColors_(),
-    // Keep empty for now (your old Node version hardcoded a GitHub URL).
-    // We can re-add your logoUrl later once the UI wiring is stable.
-    logoUrl: ""
+    logoUrl: "" // keep as-is
   };
 }
 
-/**
- * params:
- *   {
- *     email: string,
- *     mode: 'mine' | 'pm' | 'ops',
- *     pmQuery?: string,              // for PM view filtering
- *     includeUnassigned?: boolean    // PM view toggle
- *   }
- *
- * returns:
- *   {
- *     projects: [...],
- *     people: [...],
- *     pmList?: [...],
- *     statusList?: [...],
- *     totalUnassigned?: number,
- *     designerCounts?: {...},
- *     customSortOrder?: [...]
- *   }
- */
-
-
 function apiProjects(params) {
-  const email = assertDomain_((params && params.email) || getMyEmail_());
   const mode = (params && params.mode) || "mine";
   const pmQuery = (params && params.pmQuery) || "";
   const includeUnassigned = !!(params && params.includeUnassigned);
 
-  const user = getUserByEmail_(email);
-  if (!user) throw new Error("Access denied (user not found in Designer Emails).");
+  // Allow PM/Ops to request a designer's "mine" view (used for PM shift feature).
+  // For all other views, only ADMIN can act as another user.
+  const ctx = getAuthContext_((params && params.email) || "", {
+    allowCrossUserRoles: mode === "mine" ? ["PM", "OPERATIONAL"] : []
+  });
+
+  const email = ctx.targetEmail;
+  const user = ctx.targetUser;
+
+  // Role gates (prevents calling PM/Ops APIs directly if you don't have that role)
+  if (mode === "pm" && !(userHasRole_(user, "PM") || userHasRole_(user, "ADMIN"))) {
+    throw new Error("Access denied (PM role required).");
+  }
+  if (mode === "ops" && !(userHasRole_(user, "OPERATIONAL") || userHasRole_(user, "ADMIN"))) {
+    throw new Error("Access denied (Operational role required).");
+  }
 
   const allUsers = getAllUsers_();
   const userIndex = buildUserIndex_();
@@ -925,9 +1118,9 @@ function apiProjects(params) {
   const values = sh.getDataRange().getValues();
 
   const projects = [];
-
   for (let r = 1; r < values.length; r++) {
     const row = values[r];
+
     const projectNumber = row[map["Project #"]];
     const projectName = row[map["Project"]];
     const status = row[map["Status"]];
@@ -935,6 +1128,7 @@ function apiProjects(params) {
     if (!projectNumber && !projectName && !status) continue;
 
     const rowIndex = String(r + 1);
+    const projectKey = makeProjectKey_(projectNumber, projectName);
 
     const team = buildTeamFromRow_(row, map, userIndex);
     const pmName = String(row[map["PM"]] || "");
@@ -945,6 +1139,8 @@ function apiProjects(params) {
 
     const base = {
       rowIndex,
+      // New (stable) identifier — doesn't affect UI, but lets us stop relying on sheet row numbers.
+      projectKey,
       projectNumber: String(projectNumber || ""),
       projectName: String(projectName || ""),
       status: String(status || ""),
@@ -959,9 +1155,25 @@ function apiProjects(params) {
 
     if (mode === "mine") {
       const mySlot = team.find(t => slotMatchesUser_(t, user));
-      base.my = mySlot
-        ? { slot: mySlot.slot, priority: mySlot.priority, notes: mySlot.notes, dateDisplay: mySlot.dateDisplay }
-        : { slot: null, priority: "", notes: "", dateDisplay: "" };
+      if (!mySlot) continue;
+
+      base.my = { slot: mySlot.slot, priority: mySlot.priority, notes: mySlot.notes };
+
+      // Use PM name from the sheet to allow mine filtering on client
+      base.pmName = pmName || "Unassigned";
+      projects.push(base);
+      continue;
+    }
+
+    if (mode === "pm") {
+      base.pmName = pmName || "Unassigned";
+      projects.push(base);
+      continue;
+    }
+
+    if (mode === "ops") {
+      projects.push(base);
+      continue;
     }
 
     projects.push(base);
@@ -997,13 +1209,9 @@ function apiProjects(params) {
     return true;
   }).length;
 
-  // Filter by mode
   let filtered = projects;
 
-  if (mode === "mine") {
-    filtered = projects.filter(p => (p.team || []).some(t => slotMatchesUser_(t, user)));
-
-  } else if (mode === "pm") {
+  if (mode === "pm") {
     const pmName = pmQuery || user.name;
     const raw = String(pmName || "").trim();
     const rawUpper = raw.toUpperCase();
@@ -1077,46 +1285,53 @@ function apiProjects(params) {
     response.statusList = Array.from(statusSet).sort((a, b) => a.localeCompare(b));
     response.totalUnassigned = totalUnassigned;
     response.designerCounts = designerCounts;
+
+    // Legacy (rowIndex-based) custom ordering — kept for UI compatibility
     response.customSortOrder = getCustomSortOrder_(email, pmName);
+
+    // New (stable) custom ordering — NOT used by the UI yet, but stored/returned for migration
+    response.customSortOrderKeys = getCustomSortOrderKeys_(email, pmName);
   }
 
   return response;
 }
-
-
-
-/**
- * Mirrors your old /api/update body:
- * {
- *   email,
- *   mode: 'mine' | 'pm' | 'ops',
- *   payload: { rowIndex, ... }
- * }
- */
 
 function apiUpdate(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
 
   try {
-    const email = assertDomain_((body && body.email) || getMyEmail_());
     const mode = (body && body.mode) || "mine";
     const payload = (body && body.payload) || {};
 
-    const user = getUserByEmail_(email);
-    if (!user) throw new Error("Access denied (user not found in Designer Emails).");
+    // Auth:
+    // - Designers can only act as themselves
+    // - PM/Ops can act on behalf of another user ONLY for "mine" mode (used for PM shift feature)
+    // - Admin can act as anyone (view-as testing)
+    const ctx = getAuthContext_((body && body.email) || "", {
+      allowCrossUserRoles: mode === "mine" ? ["PM", "OPERATIONAL"] : []
+    });
+
+    const email = ctx.targetEmail;
+    const user = ctx.targetUser;
+
+    // Role gates
+    if (mode === "pm" && !(userHasRole_(user, "PM") || userHasRole_(user, "ADMIN"))) {
+      throw new Error("Access denied (PM role required).");
+    }
+    if (mode === "ops" && !(userHasRole_(user, "OPERATIONAL") || userHasRole_(user, "ADMIN"))) {
+      throw new Error("Access denied (Operational role required).");
+    }
 
     // Who should be credited as the editor (used only for notification text)?
-    const actorEmailRaw = payload && payload.realActorEmail;
-    const actorEmail = looksLikeEmail_(actorEmailRaw) ? assertDomain_(actorEmailRaw) : email;
-    const actorUser = getUserByEmail_(actorEmail) || user;
-    const actorName = String(actorUser.name || actorEmail || "Unknown");
+    // Use the REAL signed-in user (actor), not the target (designer being edited).
+    const actorName = String((ctx.actorUser && ctx.actorUser.name) || ctx.actorEmail || "Unknown");
 
     const { sh, map } = getProjectsSheetMap_();
     const userIndex = buildUserIndex_();
 
-    const rowIndex = Number(payload.rowIndex);
-    if (!rowIndex) throw new Error("Missing rowIndex.");
+    // Preferred: stable identifier (Project # + Project). Legacy: rowIndex.
+    const rowIndex = resolveProjectRowIndex_(sh, map, payload);
 
     const rowRange = sh.getRange(rowIndex, 1, 1, sh.getLastColumn());
     const row = rowRange.getValues()[0];
@@ -1185,16 +1400,28 @@ function apiUpdate(body) {
       // Designers + their priorities
       for (let slot = 1; slot <= 3; slot++) {
         const pHeader = `Prioraty - DESIGNER${slot}`;
+        const notesHeader = `Notes - DESIGNER${slot}`;
+        const dateHeader = `Date - DESIGNER${slot}`;
 
         const newDesigner = payload[`designer${slot}`];
         const newPrio = payload[`designer${slot}Priority`];
 
         if (newDesigner !== undefined) {
+          // ✅ FIX: If PM reassigns a slot, clear that slot’s priority + notes (+ date)
+          // so the new designer doesn't inherit the previous designer's data.
+          const changed = didDesignerSlotChange_(row, map, slot, newDesigner, userIndex);
+          if (changed) {
+            row[map[pHeader]] = "";
+            row[map[notesHeader]] = "";
+            row[map[dateHeader]] = "";
+          }
+
           setDesignerSlot_(row, map, slot, newDesigner, userIndex);
         }
+
         if (newPrio !== undefined) {
           row[map[pHeader]] = newPrio;
-          row[map[`Date - DESIGNER${slot}`]] = nowDate;
+          row[map[dateHeader]] = nowDate;
         }
       }
 
@@ -1235,33 +1462,51 @@ function apiUpdate(body) {
   }
 }
 
-
-
-
 function apiSaveCustomOrder(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
 
   try {
-    const email = assertDomain_((body && body.email) || getMyEmail_());
     const pmName = String((body && body.pmName) || "").trim();
     const orderedRowIndexes = (body && body.orderedRowIndexes) || [];
 
-    const user = getUserByEmail_(email);
-    if (!user) throw new Error("User not found");
+    // Only ADMIN can "view as" another user for saving custom order.
+    const ctx = getAuthContext_((body && body.email) || "", {
+      allowCrossUserRoles: [] // only ADMIN
+    });
 
+    const email = ctx.targetEmail;
+    const user = ctx.targetUser;
+
+    if (!(userHasRole_(user, "PM") || userHasRole_(user, "ADMIN"))) {
+      throw new Error("Access denied (PM role required).");
+    }
     if (!pmName) throw new Error("Missing pmName");
 
-    return setCustomSortOrder_(email, user.name, user.role, pmName, orderedRowIndexes);
+    // Store a stable version of the same ordering (Project # + Project),
+    // so we can migrate away from rowIndex later without breaking existing UI.
+    let orderedProjectKeys = [];
+    try {
+      const { sh, map } = getProjectsSheetMap_();
+      const values = sh.getDataRange().getValues();
+
+      orderedProjectKeys = (orderedRowIndexes || []).map(idx => {
+        const r = Number(idx);
+        if (!r || r < 2 || r > values.length) return "";
+        const row = values[r - 1];
+        return makeProjectKey_(row[map["Project #"]], row[map["Project"]]);
+      });
+    } catch (e) {
+      // If something goes wrong, still save the legacy rowIndex order so UX isn't affected.
+      orderedProjectKeys = [];
+    }
+
+    setCustomSortOrder_(email, user.name, user.role, pmName, orderedRowIndexes, orderedProjectKeys);
+    return { ok: true };
   } finally {
     lock.releaseLock();
   }
 }
-
-/* =========================
-   Notifications (basic wiring)
-   (We keep it minimal for now; we can expand later without changing UI.)
-========================= */
 
 function getNotificationsSheetMap_() {
   const sh = getSheet_(CFG.SHEET_NOTIFICATIONS);
@@ -1295,8 +1540,14 @@ function apiGetNotifications(params) {
   // transitions and create "COMPLETED_MODAL" notifications (confetti flow).
   syncCompletionCelebrations_();
 
-  const email = assertDomain_((params && params.email) || getMyEmail_());
-  const name = String((params && params.name) || "").trim();
+  // Only ADMIN can view another user's notifications (view-as testing).
+  const ctx = getAuthContext_((params && params.email) || "", {
+    allowMissingUser: true,
+    allowCrossUserRoles: [] // only ADMIN
+  });
+
+  const email = ctx.targetEmail;
+  const name = String(((ctx.targetUser && ctx.targetUser.name) || (params && params.name) || "")).trim();
 
   const emailNorm = normalize_(email);
   const nameNorm = normalize_(name);
@@ -1381,14 +1632,18 @@ function apiGetNotifications(params) {
   return out;
 }
 
-
-
 function apiAckNotification(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
 
   try {
-    const email = assertDomain_((body && body.email) || getMyEmail_());
+    // Only ADMIN can acknowledge as another user (view-as testing).
+    const ctx = getAuthContext_((body && body.email) || "", {
+      allowMissingUser: true,
+      allowCrossUserRoles: [] // only ADMIN
+    });
+
+    const email = ctx.targetEmail;
     const id = String((body && body.id) || "");
     if (!id) return { success: true };
 
@@ -1414,3 +1669,4 @@ function apiAckNotification(body) {
     lock.releaseLock();
   }
 }
+
