@@ -1,4 +1,4 @@
-// 1026
+// 654
 <script>
 /* ================= GLOBALS & STATE ================= */
 let BOOT = null;
@@ -25,10 +25,27 @@ const inflight = {};
 
 /* ================= HELPERS ================= */
 function normalize(s) { return String(s || '').toLowerCase().trim(); }
-function rowKey(p, n) { return String(p || '') + '|' + String(n || ''); }
-// --- Auto refresh guards (NEW) ---
-let __autoRefreshTimer = null;
-let __lastAutoRefreshMs = 0;
+
+// Stable Project Key (matches server format): Project # + Project (normalized)
+function makeProjectKey(projectNumber, projectName) {
+  const pn = String(projectNumber == null ? '' : projectNumber).trim();
+  const nm = String(projectName == null ? '' : projectName).trim();
+  if (!pn && !nm) return '';
+  return `${normalize(pn)}||${normalize(nm)}`;
+}
+
+// Back-compat alias (some older code used rowKey)
+function rowKey(p, n) { return makeProjectKey(p, n); }
+
+function getProjectKeyFromRow(r) {
+  if (!r) return '';
+  return String(r.projectKey || '') || makeProjectKey(r.projectNumber, r.projectName);
+}
+
+function findCardByRowIndex_(idx) {
+  return document.getElementById(`card-${idx}`) || document.querySelector(`[data-row-index="${String(idx)}"]`);
+}
+
 
 function isUiBusyForRefresh_() {
   const ae = document.activeElement;
@@ -97,32 +114,24 @@ function apiUpdateClient(body) {
 
 // Rank for sorting: 1 (Highest) -> 10 (Lowest). 
 // Legacy/Status: Completed, Hold, Abandoned are special.
+
 function getRank(p) {
   const s = normalize(p);
+
   // Status-based ranks (if p is a status)
-  if (s === 'completed') return -10; // Bottom? Or Top? Usually completed is bottom/hidden.
+  if (s === 'completed') return -10;
   if (s === 'on hold') return -5;
   if (s === 'abandoned') return -20;
 
-  // Numeric 1-10
+  // Numeric 1-10 (1 is highest)
   const n = parseInt(s, 10);
   if (!isNaN(n) && n >= 1 && n <= 10) {
-    // 1 is Highest -> Return a large number to sort descending? 
-    // Users sorting logic was: 1 is most priority.
-    // If we sort descending by Rank:
-    // 1 -> 100
-    // 10 -> 91
-    return 101 - n;
+    return 101 - n; // 1->100 ... 10->91
   }
 
-  // Legacy string mapping (fallback)
-  if (s === 'urgent') return 100; // Treat as 1
-  if (s === 'high') return 98;    // Treat as 3
-  if (s === 'medium') return 95;  // Treat as 6
-  if (s === 'low') return 90;     // Treat as 10 (or below)
-
-  return 0; // Unranked
+  return 0;
 }
+
 
 // Color Class mapping based on Priority (1-10)
 function getPrioClass(p) {
@@ -547,14 +556,15 @@ function updateStats(rows) {
   }
 }
 
+
 function saveRow(idx, view) {
   if (view === 'mine') {
-    const card = document.getElementById(`card-${idx}`);
+    const card = findCardByRowIndex_(idx);
     const sel = card ? card.querySelector('select') : null;
-    const taVal = card ? card.querySelector('textarea').value : '';
+    const taVal = card ? (card.querySelector('textarea') ? card.querySelector('textarea').value : '') : '';
     const newPrio = sel ? sel.value : '';
 
-    const r = MINE_ROWS.find(row => row.rowIndex === idx);
+    const r = MINE_ROWS.find(row => String(row.rowIndex) === String(idx));
     if (r) {
       const oldPrio = r.my.priority;
       r.my.priority = newPrio;
@@ -570,10 +580,21 @@ function saveRow(idx, view) {
     if (dot) { dot.className = 'sync-dot saving'; }
     if (msg) { msg.textContent = 'Saving...'; }
 
+    const projectKey = r ? getProjectKeyFromRow(r) : '';
+    const projectNumber = r ? r.projectNumber : '';
+    const projectName = r ? r.projectName : '';
+
     apiUpdateClient({
       email: window.currentUser.email,
       mode: 'mine',
-      payload: { rowIndex: idx, priority: newPrio, notes: taVal }
+      payload: {
+        rowIndex: idx,               // back-compat
+        projectKey,                  // stable identity
+        projectNumber,
+        projectName,
+        priority: newPrio,
+        notes: taVal
+      }
     }).then(res => {
       if (dot) { dot.className = 'sync-dot saved'; setTimeout(() => dot.className = 'sync-dot', 2000); }
       if (msg) { msg.textContent = 'Upd ' + (res && res.savedAtDisplay ? res.savedAtDisplay : ''); }
